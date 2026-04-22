@@ -477,22 +477,11 @@ function parseScheduleData() {
 // ─── WhatsApp ───────────────────────────────────────────────────────────────
 
 // Verwijder Chromium lock-bestanden zodat herstart na crash werkt
-const authDir = path.join(__dirname, '.wwebjs_auth');
-if (fs.existsSync(authDir)) {
-    const deleteLocks = (dir) => {
-        try {
-            for (const f of fs.readdirSync(dir)) {
-                const full = path.join(dir, f);
-                if (['SingletonLock','SingletonSocket','SingletonCookieService'].includes(f)) {
-                    try { fs.unlinkSync(full); console.log('Lock verwijderd:', full); } catch {}
-                } else if (fs.statSync(full).isDirectory()) {
-                    deleteLocks(full);
-                }
-            }
-        } catch {}
-    };
-    deleteLocks(authDir);
-}
+try {
+    require('child_process').execSync(
+        `find "${path.join(__dirname, '.wwebjs_auth')}" -name "Singleton*" -delete 2>/dev/null || true`
+    );
+} catch {}
 
 const client = new Client({
     authStrategy: new LocalAuth(),
