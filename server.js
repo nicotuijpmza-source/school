@@ -2,6 +2,7 @@ require('dotenv').config();
 process.on('uncaughtException', e => console.error('uncaughtException:', e.message));
 process.on('unhandledRejection', e => console.error('unhandledRejection:', e?.message || e));
 const express = require('express');
+const QRCode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -738,6 +739,14 @@ app.post('/api/pdf-rows/select', (req, res) => {
 
 app.get('/api/status', (req, res) => {
     res.json({ status: waStatus, qr: waQR });
+});
+
+app.get('/api/qr', async (req, res) => {
+    if (!waQR) return res.status(404).json({ error: 'Geen QR beschikbaar' });
+    const dataUrl = await QRCode.toDataURL(waQR, { width: 300, margin: 2 });
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+    res.setHeader('Content-Type', 'image/png');
+    res.send(Buffer.from(base64, 'base64'));
 });
 
 app.get('/api/whatsapp/groups', async (req, res) => {
