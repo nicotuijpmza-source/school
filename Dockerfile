@@ -17,5 +17,8 @@ COPY . .
 ENV CHROME_PATH=/usr/bin/chromium
 ENV NODE_ENV=production
 
+COPY start.sh ./
+RUN chmod +x start.sh
+
 EXPOSE 3000
-CMD ["sh", "-c", "find /app/.wwebjs_auth -name 'Singleton*' -delete 2>/dev/null; exec node server.js"]
+CMD ["./start.sh"]
