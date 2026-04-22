@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nico's Assistent</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #2e9e47;
+    --green-dark: #1b7a31;
+    --green-light: #e8f5e9;
+    --card-teal: #00897b;
+    --card-teal-dark: #00695c;
+    --card-green: #43a047;
+    --card-yellow: #f9a825;
+    --card-orange: #ef6c00;
+    --card-blue: #1976d2;
+    --bg: #f0f2f5;
+    --white: #ffffff;
+    --gray-100: #f5f5f5;
+    --gray-200: #eeeeee;
+    --gray-400: #bdbdbd;
+    --gray-600: #757575;
+    --gray-800: #424242;
+    --shadow: 0 2px 8px rgba(0,0,0,.12);
+    --radius: 12px;
+  }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--gray-800); min-height: 100vh; }
+
+  /* Header */
+  header {
+    background: var(--green);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 60px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-size: 20px; font-weight: 700; letter-spacing: -.3px; }
+  .logo span { opacity: .75; font-weight: 400; font-size: 14px; margin-left: 8px; }
+  .wa-status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #aaa; }
+  .status-dot.connected { background: #69f0ae; }
+  .status-dot.qr { background: #ffd740; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Tabs */
+  .tabs { background: white; border-bottom: 1px solid var(--gray-200); display: flex; padding: 0 24px; }
+  .tab { padding: 14px 20px; font-size: 14px; font-weight: 500; color: var(--gray-600); cursor: pointer; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab:hover { color: var(--green); }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* Content */
+  .content { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+  /* Panel */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Rooster ── */
+  .week-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .week-title h2 { font-size: 32px; font-weight: 300; color: var(--gray-800); }
+  .week-title p { font-size: 14px; color: var(--gray-600); margin-top: 2px; }
+  .week-nav { display: flex; align-items: center; gap: 8px; }
+  .week-nav button {
+    background: white; border: 1px solid var(--gray-200); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; color: var(--gray-800);
+    transition: all .15s;
+  }
+  .week-nav button:hover { background: var(--green-light); border-color: var(--green); color: var(--green); }
+  .week-nav .btn-today { background: var(--green); color: white; border-color: var(--green); }
+  .week-nav .btn-today:hover { background: var(--green-dark); }
+
+  .calendar {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .cal-header {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border-bottom: 3px solid var(--green);
+  }
+  .cal-day-header {
+    text-align: center;
+    padding: 14px 8px;
+    font-size: 13px;
+    color: var(--gray-600);
+  }
+  .cal-day-header .day-name { font-weight: 600; text-transform: capitalize; }
+  .cal-day-header .day-num { font-size: 22px; font-weight: 300; color: var(--gray-800); margin-top: 2px; }
+  .cal-day-header.today .day-num {
+    background: var(--green); color: white; border-radius: 50%;
+    width: 36px; height: 36px; display: inline-flex; align-items: center;
+    justify-content: center; margin-top: 2px;
+  }
+  .holiday-badge {
+    display: inline-block; font-size: 10px; background: #fce4ec; color: #c62828;
+    border-radius: 4px; padding: 1px 5px; margin-top: 3px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+  }
+  .vacation-badge {
+    display: inline-block; font-size: 10px; background: #e3f2fd; color: #1565c0;
+    border-radius: 4px; padding: 1px 5px; margin-top: 2px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
+  }
+
+  .cal-body { display: grid; grid-template-columns: repeat(7, 1fr); min-height: 200px; }
+
+  .cal-col {
+    border-right: 1px solid var(--gray-200); padding: 10px 8px;
+    display: flex; flex-direction: column; gap: 8px;
+    min-height: 120px; cursor: pointer;
+  }
+  .cal-col:hover { background: rgba(46,158,71,.05); }
+  .cal-col:last-child { border-right: none; }
+  .cal-col.today { background: #f1f8f2; }
+  .cal-col.weekend { background: var(--gray-100); }
+
+  .hva-card {
+    border-radius: 10px; padding: 8px 12px;
+    background: #5c6bc0; color: white; font-size: 12px;
+    margin-top: 4px;
+  }
+  .hva-card .hva-title { font-weight: 600; font-size: 13px; }
+  .hva-card .hva-meta { opacity: .85; margin-top: 2px; }
+
+  .shift-card {
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: white;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+    position: relative;
+  }
+  .shift-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+  .shift-time { font-size: 14px; font-weight: 600; }
+  .shift-badge {
+    display: inline-block; background: rgba(255,255,255,.25);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; margin-top: 6px;
+  }
+  .colleague-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(255,255,255,.2); border-radius: 20px;
+    padding: 3px 8px; font-size: 11px; margin-top: 4px; margin-right: 4px;
+  }
+
+  .no-schedule {
+    grid-column: 1/-1;
+    text-align: center; padding: 60px 20px; color: var(--gray-600);
+  }
+  .no-schedule .icon { font-size: 48px; margin-bottom: 12px; }
+  .no-schedule h3 { font-weight: 500; margin-bottom: 8px; }
+  .upload-btn {
+    display: inline-block; margin-top: 16px; background: var(--green);
+    color: white; padding: 10px 20px; border-radius: 8px; font-size: 14px;
+    cursor: pointer; border: none;
+  }
+  .upload-btn:hover { background: var(--green-dark); }
+
+  /* Upload area */
+  .upload-area {
+    border: 2px dashed var(--gray-400); border-radius: var(--radius);
+    padding: 40px; text-align: center; color: var(--gray-600);
+    cursor: pointer; transition: all .2s; margin-top: 16px;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: var(--green); color: var(--green); background: var(--green-light); }
+  .upload-area .icon { font-size: 36px; margin-bottom: 8px; }
+  #fileInput { display: none; }
+
+  /* ── Groepen ── */
+  .groups-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; }
+  .group-card {
+    background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .group-card-header {
+    background: var(--green); color: white;
+    padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .group-card-header h3 { font-size: 15px; font-weight: 600; }
+  .group-card-body { padding: 16px 18px; font-size: 14px; line-height: 1.6; color: var(--gray-800); }
+  .group-card-body ul { padding-left: 18px; }
+  .group-card-body li { margin-bottom: 6px; }
+  .last-updated { font-size: 12px; color: var(--gray-600); margin-top: 12px; }
+  .refresh-btn {
+    background: rgba(255,255,255,.2); border: none; color: white;
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  .refresh-btn:hover { background: rgba(255,255,255,.35); }
+  .empty-state { color: var(--gray-600); font-style: italic; }
+
+  /* ── Chat ── */
+  .chat-container {
+    max-width: 720px; margin: 0 auto;
+    background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+    display: flex; flex-direction: column; height: calc(100vh - 160px);
+  }
+  .chat-header {
+    background: var(--green); color: white; padding: 16px 20px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    font-weight: 600; font-size: 15px;
+  }
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 75%; }
+  .msg.user { align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+  .msg-bubble {
+    padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.5;
+  }
+  .msg.user .msg-bubble { background: var(--green); color: white; border-bottom-right-radius: 4px; }
+  .msg.assistant .msg-bubble { background: var(--gray-100); color: var(--gray-800); border-bottom-left-radius: 4px; }
+  .msg-time { font-size: 11px; color: var(--gray-400); margin-top: 3px; text-align: right; }
+  .msg.assistant .msg-time { text-align: left; }
+  .chat-input-area {
+    padding: 16px; border-top: 1px solid var(--gray-200);
+    display: flex; gap: 10px;
+  }
+  .chat-input {
+    flex: 1; border: 1px solid var(--gray-200); border-radius: 24px;
+    padding: 10px 16px; font-size: 14px; outline: none; resize: none;
+    font-family: inherit;
+  }
+  .chat-input:focus { border-color: var(--green); }
+  .send-btn {
+    background: var(--green); color: white; border: none;
+    border-radius: 50%; width: 44px; height: 44px; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s; flex-shrink: 0;
+  }
+  .send-btn:hover { background: var(--green-dark); }
+  .send-btn:disabled { background: var(--gray-400); cursor: default; }
+  .typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
+  .typing span { width: 7px; height: 7px; background: var(--gray-400); border-radius: 50%; animation: bounce .9s infinite; }
+  .typing span:nth-child(2) { animation-delay: .15s; }
+  .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  /* Row picker */
+  .row-picker { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .row-option {
+    border: 2px solid var(--gray-200); border-radius: 10px; padding: 8px 12px;
+    cursor: pointer; font-size: 13px; transition: all .15s; background: white;
+    text-align: left; width: 100%;
+  }
+  .row-option:hover { border-color: var(--green); background: var(--green-light); }
+  .row-option .row-times { color: var(--gray-600); font-size: 11px; margin-top: 2px; flex-wrap: wrap; display: flex; gap: 4px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 500; opacity: 0; pointer-events: none; transition: opacity .2s;
+    padding: 16px;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: white; border-radius: 16px; width: 480px; max-width: 100%;
+    max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25); transform: translateY(20px);
+    transition: transform .2s; overflow: hidden;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-header {
+    padding: 20px 20px 16px; display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .modal-header h3 { font-size: 18px; font-weight: 600; text-transform: capitalize; }
+  .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #757575; line-height: 1; }
+  .modal-body { padding: 0 20px 20px; overflow-y: auto; flex: 1; }
+  .modal-shift {
+    border-radius: 12px; padding: 14px 16px; color: white; margin-bottom: 16px;
+  }
+  .modal-shift .shift-label { font-size: 12px; opacity: .8; margin-bottom: 4px; }
+  .modal-shift .shift-value { font-size: 22px; font-weight: 600; }
+  .modal-no-shift { color: #757575; font-style: italic; margin-bottom: 16px; padding: 14px 0; }
+  .modal-colleagues h4 { font-size: 13px; font-weight: 600; color: #757575; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+  .colleague-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .colleague-row .c-name { font-weight: 500; }
+  .colleague-row .c-shift { color: #757575; font-size: 13px; }
+
+  /* ── Financiën Dashboard ── */
+  .fin-hero {
+    background: linear-gradient(135deg, #1b7a31 0%, #2e9e47 60%, #43a047 100%);
+    border-radius: var(--radius); padding: 28px 32px; margin-bottom: 20px;
+    color: white; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .fin-hero-left h2 { font-size: 14px; font-weight: 500; opacity: .8; letter-spacing: .5px; text-transform: uppercase; }
+  .fin-hero-left .total-balance { font-size: 42px; font-weight: 300; margin-top: 4px; }
+  .fin-hero-left .balance-sub { font-size: 13px; opacity: .7; margin-top: 4px; }
+  .fin-hero-right { display: flex; gap: 32px; }
+  .fin-hero-stat { text-align: center; }
+  .fin-hero-stat .stat-label { font-size: 11px; opacity: .7; text-transform: uppercase; letter-spacing: .5px; }
+  .fin-hero-stat .stat-val { font-size: 22px; font-weight: 500; margin-top: 2px; }
+  .fin-hero-stat .stat-val.neg { color: #ffcdd2; }
+  .fin-hero-stat .stat-val.pos { color: #c8e6c9; }
+
+
+
+  .fin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 800px) { .fin-row { grid-template-columns: 1fr; } }
+  .fin-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .fin-card-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--gray-200);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .fin-card-head h3 { font-size: 14px; font-weight: 600; color: var(--gray-800); }
+  .fin-card-body { padding: 16px 18px; }
+  .chart-wrap { position: relative; height: 220px; }
+
+  .cat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .cat-label { font-size: 13px; color: var(--gray-800); flex: 1; }
+  .cat-bar-wrap { width: 100px; height: 6px; background: var(--gray-200); border-radius: 3px; overflow: hidden; }
+  .cat-bar { height: 100%; border-radius: 3px; }
+  .cat-amount { font-size: 13px; font-weight: 600; color: var(--gray-800); min-width: 60px; text-align: right; }
+
+  .insights-box {
+    background: linear-gradient(135deg, #f1f8f2, #e8f5e9);
+    border-radius: var(--radius); padding: 20px 22px; margin-bottom: 20px;
+    border-left: 4px solid var(--green);
+  }
+  .insights-box h3 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--green-dark); margin-bottom: 10px; }
+  .insights-box p { font-size: 14px; line-height: 1.7; color: var(--gray-800); white-space: pre-wrap; }
+
+  .tx-list { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 20px; }
+  .tx-list-head { padding: 14px 18px; border-bottom: 1px solid var(--gray-200); display: flex; align-items: center; justify-content: space-between; }
+  .tx-list-head h3 { font-size: 14px; font-weight: 600; }
+  .tx-row { display: flex; align-items: center; padding: 11px 18px; border-bottom: 1px solid var(--gray-200); gap: 12px; }
+  .tx-row:last-child { border-bottom: none; }
+  .tx-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; color: white; }
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-desc { font-size: 11px; color: var(--gray-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-right { text-align: right; flex-shrink: 0; }
+  .tx-amount { font-size: 14px; font-weight: 600; }
+  .tx-amount.out { color: #c62828; }
+  .tx-amount.in  { color: #2e7d32; }
+  .tx-date { font-size: 11px; color: var(--gray-400); }
+
+  /* ── Mail ── */
+  .mail-toolbar {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+  }
+  .mail-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+  .mail-stat {
+    display: flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-radius: 20px; font-size: 13px; font-weight: 600;
+  }
+  .mail-stat.urgent  { background: #fdecea; color: #c62828; }
+  .mail-stat.waiting { background: #fff8e1; color: #f57f17; }
+  .mail-stat.info    { background: #e8f5e9; color: #2e7d32; }
+
+  .mail-connect-box {
+    background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 48px; text-align: center; max-width: 480px; margin: 40px auto;
+  }
+  .mail-connect-box .icon { font-size: 48px; margin-bottom: 16px; }
+  .mail-connect-box h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .mail-connect-box p { color: var(--gray-600); font-size: 14px; margin-bottom: 20px; }
+
+  .mail-section { margin-bottom: 24px; }
+  .mail-section-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+    color: var(--gray-600); margin-bottom: 10px; padding: 0 2px;
+  }
+
+  .mail-card {
+    background: white; border-radius: 12px; box-shadow: var(--shadow);
+    margin-bottom: 8px; overflow: hidden; cursor: pointer;
+    transition: box-shadow .15s;
+    border-left: 4px solid transparent;
+  }
+  .mail-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+  .mail-card.urgent  { border-left-color: #e53935; }
+  .mail-card.waiting { border-left-color: #fb8c00; }
+  .mail-card.info    { border-left-color: #43a047; }
+  .mail-card.unread .mail-subject { font-weight: 700; }
+
+  .mail-card-inner { padding: 14px 16px; }
+  .mail-row1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .mail-from { font-size: 13px; font-weight: 600; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .mail-date { font-size: 11px; color: var(--gray-400); flex-shrink: 0; }
+  .mail-subject { font-size: 13px; color: var(--gray-800); margin: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mail-summary { font-size: 12px; color: var(--gray-600); line-height: 1.5; }
+  .mail-tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .mail-tag {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+  }
+  .mail-tag.reply   { background: #e3f2fd; color: #1565c0; }
+  .mail-tag.deadline{ background: #fff3e0; color: #e65100; }
+  .mail-tag.action  { background: #fce4ec; color: #c62828; }
+
+  .mail-detail-header { padding: 20px 20px 12px; border-bottom: 1px solid var(--gray-200); }
+  .mail-detail-subject { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+  .mail-detail-meta { font-size: 12px; color: var(--gray-600); line-height: 1.8; }
+  .mail-detail-summary {
+    margin: 16px 0; padding: 14px 16px; background: var(--green-light);
+    border-radius: 10px; font-size: 14px; line-height: 1.6; color: var(--gray-800);
+    border-left: 4px solid var(--green);
+  }
+  .mail-detail-body {
+    margin-top: 16px; font-size: 13px; line-height: 1.7; color: var(--gray-600);
+    white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto;
+    background: var(--gray-100); padding: 14px; border-radius: 8px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--gray-800); color: white; padding: 12px 20px;
+    border-radius: 8px; font-size: 14px; z-index: 1000;
+    transform: translateY(100px); transition: transform .3s;
+  }
+  .toast.show { transform: translateY(0); }
+  .toast.success { background: var(--green); }
+  .toast.error { background: #c62828; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-400); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">werktijden <span>— Nico's Assistent</span></div>
+  <div class="wa-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Verbinden...</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="rooster">📅 Rooster</div>
+  <div class="tab" data-tab="groepen">💬 Groepen</div>
+  <div class="tab" data-tab="chat">🤖 Assistent</div>
+  <div class="tab" data-tab="mail">📧 Mail</div>
+  <div class="tab" data-tab="finance">💰 Uitgaven</div>
+</div>
+
+<div class="content">
+
+  <!-- ── ROOSTER ── -->
+  <div class="panel active" id="panel-rooster">
+    <div class="week-header">
+      <div class="week-title">
+        <h2 id="weekTitle">Week —</h2>
+        <p id="weekRange">Laden...</p>
+      </div>
+      <div class="week-nav">
+        <button onclick="changeWeek(-1)">&#8592; Vorige</button>
+        <button class="btn-today" onclick="goToCurrentWeek()">Vandaag</button>
+        <button onclick="changeWeek(1)">Volgende &#8594;</button>
+      </div>
+    </div>
+
+    <div class="calendar" id="calendar">
+      <div class="cal-header" id="calHeader"></div>
+      <div class="cal-body" id="calBody"></div>
+    </div>
+
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📂</div>
+      <div><strong>Rooster uploaden</strong></div>
+      <div style="font-size:13px;margin-top:4px">Klik of sleep het Excel-bestand van Kevin hierheen — nieuwe roosters van Kevin worden automatisch verwerkt zodra hij ze stuurt</div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.ods" onchange="uploadFile(this)">
+  </div>
+
+  <!-- ── GROEPEN ── -->
+  <div class="panel" id="panel-groepen">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <h2 style="font-size:22px;font-weight:500">WhatsApp groepen</h2>
+        <p style="font-size:13px;color:#757575;margin-top:2px" id="summaryTimestamp">Laden...</p>
+      </div>
+      <button class="upload-btn" onclick="refreshSummaries()" id="refreshBtn">🔄 Vernieuwen</button>
+    </div>
+    <div class="groups-grid" id="groupsGrid">
+      <div style="color:#757575;font-style:italic">Samenvatingen laden...</div>
+    </div>
+  </div>
+
+  <!-- ── CHAT ── -->
+  <div class="panel" id="panel-chat">
+    <div class="chat-container">
+      <div class="chat-header">🤖 Persoonlijke assistent</div>
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg assistant">
+          <div class="msg-bubble">Hallo Nico! Ik kan je helpen met je werkrooster en andere vragen. Wat wil je weten?</div>
+          <div class="msg-time">nu</div>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <textarea class="chat-input" id="chatInput" rows="1" placeholder="Stel een vraag..." onkeydown="chatKeydown(event)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendChat()">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FINANCIËN ── -->
+  <div class="panel" id="panel-finance">
+    <div id="financeContent">
+      <div style="text-align:center;padding:60px;color:#757575">Laden...</div>
+    </div>
+  </div>
+
+  <!-- ── MAIL ── -->
+  <div class="panel" id="panel-mail">
+    <div id="mailContent">
+      <div style="text-align:center;padding:60px;color:#757575">Laden...</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="mailModalOverlay" onclick="closeMailModal(event)">
+  <div class="modal" style="width:600px">
+    <div class="modal-header">
+      <h3 id="mailModalTitle" style="font-size:15px"></h3>
+      <button class="modal-close" onclick="closeMailModal()">×</button>
+    </div>
+    <div class="modal-body" id="mailModalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="rowPickerOverlay" style="z-index:600">
+  <div class="modal" style="width:560px">
+    <div class="modal-header" style="background:var(--green);color:white;border-radius:16px 16px 0 0;flex-shrink:0">
+      <h3 style="color:white">Welke rij ben jij?</h3>
+    </div>
+    <div class="modal-body" style="padding-top:12px;overflow-y:auto;max-height:70vh">
+      <p style="font-size:13px;color:#757575;margin-bottom:12px">De namen staan niet in de PDF. Selecteer jouw rij op basis van je werktijden:</p>
+      <div class="row-picker" id="rowPickerList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalDate"></h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="modalShift"></div>
+      <div class="modal-colleagues">
+        <h4>Collega's</h4>
+        <div id="modalColleagues"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Dutch public holidays
+function easterDate(year) {
+  const a = year % 19, b = Math.floor(year/100), c = year % 100;
+  const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+  const g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15) % 30;
+  const i = Math.floor(c/4), k = c % 4;
+  const l = (32+2*e+2*i-h-k) % 7;
+  const m = Math.floor((a+11*h+22*l)/451);
+  const month = Math.floor((h+l-7*m+114)/31);
+  const day = ((h+l-7*m+114) % 31)+1;
+  return new Date(year, month-1, day);
+}
+
+function getHolidays(year) {
+  const e = easterDate(year);
+  const add = (date, days) => { const d=new Date(date); d.setDate(d.getDate()+days); return d; };
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const h = {};
+  const set = (d, name) => { h[fmt(d)] = name; };
+  set(new Date(year,0,1),  'Nieuwjaarsdag');
+  set(add(e,-2),           'Goede Vrijdag');
+  set(e,                   '1e Paasdag');
+  set(add(e,1),            '2e Paasdag');
+  set(new Date(year,3,27), 'Koningsdag');
+  set(new Date(year,4,5),  'Bevrijdingsdag');
+  set(add(e,39),           'Hemelvaartsdag');
+  set(add(e,49),           '1e Pinksterdag');
+  set(add(e,50),           '2e Pinksterdag');
+  set(new Date(year,11,25),'1e Kerstdag');
+  set(new Date(year,11,26),'2e Kerstdag');
+  return h;
+}
+
+function shiftColor(s) {
+  const m = String(s).match(/(\d{1,2})[:.h]/);
+  if (!m) return '#5c6bc0';
+  const h = parseInt(m[1]);
+  if (h < 9) return '#ef6c00';
+  if (h < 12) return '#f9a825';
+  if (h < 15) return '#43a047';
+  if (h < 17) return '#00897b';
+  return '#00695c';
+}
+
+let currentWeek = null;
+let allWeeks = [];
+let dayData = {};
+let hvaData = {};
+let recurringData = {};
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Status polling ────────────────────────────────────────────────────────
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status').then(r => r.json());
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'status-dot ' + r.status;
+    txt.textContent = r.status === 'connected' ? 'WhatsApp verbonden' : r.status === 'qr' ? 'Scan QR code' : 'Niet verbonden';
+  } catch {}
+}
+pollStatus();
+setInterval(pollStatus, 5000);
+
+// ── Schedule ──────────────────────────────────────────────────────────────
+const MONTH_NL = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+
+async function loadSchedule(week) {
+  const url = week ? `/api/schedule?week=${week}` : '/api/schedule';
+  const [data, hva, recurring] = await Promise.all([
+    fetch(url).then(r => r.json()),
+    fetch('/api/hva').then(r => r.json()),
+    fetch('/api/recurring').then(r => r.json())
+  ]);
+  currentWeek = data.week;
+  allWeeks = data.weeks || [];
+  hvaData = hva.events || {};
+  recurringData = recurring || {};
+  renderCalendar(data);
+}
+
+function renderCalendar(data) {
+  const { week, days } = data;
+
+  // Week title
+  const [yr, wk] = week.split('-W');
+  document.getElementById('weekTitle').textContent = `Week ${parseInt(wk)}`;
+  if (days.length) {
+    const first = days[0], last = days[6];
+    document.getElementById('weekRange').textContent =
+      `${first.dayNum} ${MONTH_NL[first.month-1]} — ${last.dayNum} ${MONTH_NL[last.month-1]}`;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  dayData = {};
+  days.forEach(d => { dayData[d.date] = d; });
+
+  const isWeekend = date => { const d = new Date(date); return d.getDay() === 0 || d.getDay() === 6; };
+  const holidays = {};
+  const years = [...new Set(days.map(d => d.date.slice(0,4)))];
+  years.forEach(y => Object.assign(holidays, getHolidays(parseInt(y))));
+
+  // Headers
+  document.getElementById('calHeader').innerHTML = days.map(d => {
+    const holiday = holidays[d.date];
+    const freeEvents = (hvaData[d.date] || []).filter(ev => ev.type === 'free');
+    const vacLabel = freeEvents.length ? freeEvents[0].title : null;
+    return `<div class="cal-day-header${d.date === today ? ' today' : ''}">
+      <div class="day-name">${d.dayName}</div>
+      <div class="day-num">${d.dayNum}</div>
+      ${holiday ? `<div class="holiday-badge">🎉 ${holiday}</div>` : ''}
+      ${vacLabel ? `<div class="vacation-badge">🏖️ ${vacLabel}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Always render columns so they're always clickable
+  document.getElementById('calBody').innerHTML = days.map(d => {
+    const color = d.color || '#43a047';
+    const pills = (d.colleagues || []).slice(0, 3).map(c =>
+      `<div class="colleague-pill">👤 ${c.name.split(' ')[0]}</div>`).join('');
+    const shiftHtml = d.shift
+      ? `<div class="shift-card" style="background:${color}">
+           <div class="shift-time">${d.shift}</div>
+           ${pills}
+         </div>`
+      : '';
+    const hvaHtml = (hvaData[d.date] || []).map(ev =>
+      `<div class="hva-card">
+        <div class="hva-title">🎓 ${ev.title}</div>
+        <div class="hva-meta">${ev.time}${ev.location ? ' · ' + ev.location : ''}</div>
+      </div>`).join('');
+    const recurringHtml = (recurringData[d.date] || []).map(ev =>
+      `<div class="shift-card" style="background:${shiftColor(ev.time)}">
+        <div class="shift-time">${ev.time}</div>
+        <div class="shift-badge">${ev.label || ev.title}</div>
+      </div>`).join('');
+    return `<div class="cal-col${d.date === today ? ' today' : ''}${isWeekend(d.date) ? ' weekend' : ''}"
+      onclick="openDay('${d.date}')">
+      ${shiftHtml}${hvaHtml}${recurringHtml}
+    </div>`;
+  }).join('');
+}
+
+function openDay(date) {
+  const d = dayData[date] || {};
+  const yr = parseInt(date.slice(0,4));
+  const holiday = getHolidays(yr)[date] || null;
+  const freeEvents = (hvaData[date] || []).filter(ev => ev.type === 'free');
+  const vacation = freeEvents.length ? freeEvents[0].title : null;
+  showDayModal(date, d.shift || '', d.color || '#43a047', d.colleagues || [], holiday, vacation);
+}
+
+function showDayModal(date, shift, color, colleagues, holiday, vacation) {
+  const d = new Date(date);
+  document.getElementById('modalDate').textContent =
+    d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const holidayHtml = holiday
+    ? `<div style="background:#fce4ec;color:#c62828;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;margin-bottom:12px">🎉 ${holiday}</div>`
+    : '';
+  const vacationHtml = vacation
+    ? `<div style="background:#e3f2fd;color:#1565c0;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;margin-bottom:12px">🏖️ ${vacation}</div>`
+    : '';
+
+  document.getElementById('modalShift').innerHTML = holidayHtml + vacationHtml + (shift
+    ? `<div class="modal-shift" style="background:${color||'#43a047'}">
+        <div class="shift-label">Jouw dienst</div>
+        <div class="shift-value">${shift}</div>
+       </div>`
+    : `<div class="modal-no-shift">Geen dienst op deze dag</div>`);
+
+  const cols = colleagues && colleagues.length
+    ? colleagues.map(c => `<div class="colleague-row"><span class="c-name">👤 ${c.name}</span><span class="c-shift">${c.shift}</span></div>`).join('')
+    : '<div style="color:#757575;font-size:14px">Geen collega\'s gevonden</div>';
+  document.getElementById('modalColleagues').innerHTML = cols;
+
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modalOverlay'))
+    document.getElementById('modalOverlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+async function requestFromKevin() {
+  const btn = document.getElementById('kevinBtn');
+  btn.textContent = '⏳ Sturen...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/schedule/request-from-kevin', { method: 'POST' }).then(r => r.json());
+    if (r.ok) showToast('✅ Bericht gestuurd aan Kevin! Het rooster wordt automatisch ingeladen zodra hij antwoordt.', 'success');
+    else showToast('❌ ' + r.error, 'error');
+  } catch { showToast('❌ Mislukt', 'error'); }
+  btn.textContent = '📩 Vraag Kevin om rooster';
+  btn.disabled = false;
+}
+
+function changeWeek(dir) {
+  const week = currentWeek || (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-W${String(getISOWeekJS(now)).padStart(2,'0')}`;
+  })();
+  const [yr, wk] = week.split('-W');
+  let newWk = parseInt(wk) + dir;
+  let newYr = parseInt(yr);
+  if (newWk < 1) { newYr--; newWk = 52; }
+  if (newWk > 52) { newYr++; newWk = 1; }
+  loadSchedule(`${newYr}-W${String(newWk).padStart(2,'0')}`);
+}
+
+function getISOWeekJS(d) {
+  const date = new Date(d); date.setHours(0,0,0,0);
+  date.setDate(date.getDate() + 3 - ((date.getDay()+6)%7));
+  const w1 = new Date(date.getFullYear(),0,4);
+  return 1 + Math.round(((date-w1)/86400000 - 3 + ((w1.getDay()+6)%7))/7);
+}
+
+function goToCurrentWeek() { loadSchedule(); }
+
+// ── Upload ────────────────────────────────────────────────────────────────
+const uploadArea = document.getElementById('uploadArea');
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault(); uploadArea.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) doUpload(file);
+});
+
+function uploadFile(input) { if (input.files[0]) doUpload(input.files[0]); }
+
+async function doUpload(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/schedule/upload', { method: 'POST', body: fd }).then(r => r.json());
+    if (r.ok) { showToast('✅ Rooster opgeslagen!', 'success'); loadSchedule(); }
+    else showToast('❌ ' + r.error, 'error');
+  } catch { showToast('❌ Upload mislukt', 'error'); }
+}
+
+// ── Summaries ────────────────────────────────────────────────────────────
+async function loadSummaries() {
+  const data = await fetch('/api/summaries').then(r => r.json());
+  renderSummaries(data);
+}
+
+function renderSummaries(data) {
+  const grid = document.getElementById('groupsGrid');
+  const ts = document.getElementById('summaryTimestamp');
+  ts.textContent = data.lastUpdated
+    ? `Laatste update: ${new Date(data.lastUpdated).toLocaleString('nl-NL')}`
+    : 'Nog geen samenvattingen';
+
+  const groups = ['Out en nieuw', 'Le pompadour', 'De Petjes'];
+  const icons = { 'Out en nieuw': '🎉', 'Le pompadour': '🍽️', 'De Petjes': '🧢' };
+
+  grid.innerHTML = groups.map(name => {
+    const text = data.groups?.[name] || null;
+    const bodyHtml = text
+      ? formatSummary(text)
+      : '<p class="empty-state">Nog geen samenvatting beschikbaar. Klik op Vernieuwen.</p>';
+    return `<div class="group-card">
+      <div class="group-card-header">
+        <h3>${icons[name] || '💬'} ${name}</h3>
+        <button class="refresh-btn" onclick="refreshSummaries()">🔄</button>
+      </div>
+      <div class="group-card-body">${bodyHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function formatSummary(text) {
+  const lines = text.split('\n').filter(l => l.trim());
+  const items = lines.filter(l => l.match(/^[•\-*]/));
+  if (items.length) {
+    return '<ul>' + items.map(l => `<li>${l.replace(/^[•\-*]\s*/, '')}</li>`).join('') + '</ul>';
+  }
+  return lines.map(l => `<p>${l}</p>`).join('');
+}
+
+async function refreshSummaries() {
+  const btn = document.getElementById('refreshBtn');
+  btn.textContent = '⏳ Laden...';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/summaries/refresh', { method: 'POST' }).then(r => r.json());
+    if (r.error) showToast('❌ ' + r.error, 'error');
+    else { renderSummaries(r); showToast('✅ Samenvattingen vernieuwd!', 'success'); }
+  } catch { showToast('❌ Mislukt', 'error'); }
+  btn.textContent = '🔄 Vernieuwen';
+  btn.disabled = false;
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  addMsg('user', msg);
+  input.value = '';
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+
+  // Typing indicator
+  const typingId = 'typing-' + Date.now();
+  const msgs = document.getElementById('chatMessages');
+  msgs.innerHTML += `<div class="msg assistant" id="${typingId}"><div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    }).then(r => r.json());
+
+    document.getElementById(typingId)?.remove();
+    addMsg('assistant', r.reply || r.error);
+  } catch {
+    document.getElementById(typingId)?.remove();
+    addMsg('assistant', 'Er ging iets mis. Probeer het opnieuw.');
+  }
+
+  btn.disabled = false;
+}
+
+function addMsg(role, text) {
+  const msgs = document.getElementById('chatMessages');
+  const time = new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  msgs.innerHTML += `<div class="msg ${role}">
+    <div class="msg-bubble">${text.replace(/\n/g, '<br>')}</div>
+    <div class="msg-time">${time}</div>
+  </div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+// ── Row picker ───────────────────────────────────────────────────────────
+async function checkForRowPicker() {
+  // Only show row picker if there's no schedule data yet from Claude vision
+  const schedule = await fetch('/api/schedule').then(r => r.json());
+  if (schedule.days && schedule.days.some(d => d.shift)) return; // Already has data
+  const r = await fetch('/api/pdf-rows').then(r => r.json());
+  if (!r.rows || r.nicoRowIndex !== undefined) return;
+  showRowPicker(r.rows, r.dates);
+}
+
+function showRowPicker(rows, dates) {
+  const DAYS = ['Ma','Di','Wo','Do','Vr','Za','Zo'];
+  const list = document.getElementById('rowPickerList');
+  list.innerHTML = rows.map((row, i) => {
+    const times = row.map((t, j) => `<span style="margin-right:6px">${DAYS[j]||''}: ${t}</span>`).join('');
+    return `<button class="row-option" onclick="selectRow(${i})">
+      <div><strong>Rij ${i + 1}</strong></div>
+      <div class="row-times">${times}</div>
+    </button>`;
+  }).join('');
+  document.getElementById('rowPickerOverlay').classList.add('open');
+}
+
+async function selectRow(idx) {
+  await fetch('/api/pdf-rows/select', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rowIndex: idx })
+  });
+  document.getElementById('rowPickerOverlay').classList.remove('open');
+  showToast('✅ Jouw rij opgeslagen!', 'success');
+  loadSchedule();
+}
+
+// ── Financiën ────────────────────────────────────────────────────────────
+async function initFinance() {
+  const status = await fetch('/api/bunq/status').then(r => r.json());
+  if (!status.connected) {
+    document.getElementById('financeContent').innerHTML = `
+      <div class="mail-connect-box">
+        <div class="icon">💰</div>
+        <h3>Bunq koppelen</h3>
+        <p>Verbinding wordt opgezet...</p>
+      </div>`;
+    const r = await fetch('/api/bunq/setup', { method: 'POST' }).then(r => r.json());
+    if (r.error) {
+      document.getElementById('financeContent').innerHTML = `<div class="mail-connect-box"><div class="icon">❌</div><h3>Fout</h3><p>${r.error}</p></div>`;
+      return;
+    }
+  }
+  const cache = await fetch('/api/bunq/data').then(r => r.json());
+  if (cache.accounts?.length) renderFinance(cache);
+  else refreshFinance();
+}
+
+async function refreshFinance() {
+  document.getElementById('financeContent').innerHTML = '<div style="text-align:center;padding:60px;color:#757575">⏳ Transacties ophalen...</div>';
+  try {
+    const r = await fetch('/api/bunq/fetch', { method: 'POST' }).then(r => r.json());
+    if (r.error) { showToast('❌ ' + r.error, 'error'); return; }
+    renderFinance(r);
+    showToast('✅ Financiën bijgewerkt!', 'success');
+  } catch (e) { showToast('❌ Mislukt', 'error'); }
+}
+
+let donutChart = null, barChart = null;
+
+function catColor(i) {
+  const colors = ['#2e9e47','#1976d2','#f9a825','#e53935','#7b1fa2','#00897b','#ef6c00','#5c6bc0'];
+  return colors[i % colors.length];
+}
+
+function avatarColor(name) {
+  const colors = ['#1976d2','#388e3c','#f57c00','#7b1fa2','#00838f','#c62828','#558b2f','#4527a0'];
+  let h = 0; for (const c of (name||'?')) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return colors[h % colors.length];
+}
+
+async function loadAndRenderInvestments() {
+  try {
+    const inv = await fetch('/api/investments').then(r => r.json());
+    const el = document.getElementById('investSection');
+    if (!el) return;
+
+    const sp = inv.sp500;
+    const gain = inv.gainEur;
+    const gainPct = inv.gainPct;
+    const isUp = gain >= 0;
+    const dayUp = sp?.dayChange >= 0;
+
+    const recentDeposits = (inv.deposits || []).slice(0, 6);
+
+    el.innerHTML = `
+      <div class="fin-card" style="margin-bottom:20px">
+        <div class="fin-card-head">
+          <h3>📈 S&P 500 Belegging</h3>
+          ${sp ? `<span style="font-size:12px;color:#757575">Bijgewerkt: ${sp.date}</span>` : ''}
+        </div>
+        <div class="fin-card-body">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+            <div style="background:#f5f5f5;border-radius:10px;padding:14px">
+              <div style="font-size:11px;color:#757575;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Ingelegd</div>
+              <div style="font-size:22px;font-weight:500;margin-top:4px">€${inv.totalDeposited.toFixed(2)}</div>
+            </div>
+            <div style="background:${isUp?'#e8f5e9':'#fdecea'};border-radius:10px;padding:14px">
+              <div style="font-size:11px;color:${isUp?'#2e7d32':'#c62828'};font-weight:600;text-transform:uppercase;letter-spacing:.5px">Huidige waarde</div>
+              <div style="font-size:22px;font-weight:500;color:${isUp?'#1b7a31':'#c62828'};margin-top:4px">€${inv.currentValue.toFixed(2)}</div>
+              <div style="font-size:12px;color:${isUp?'#2e7d32':'#c62828'};margin-top:2px">${isUp?'▲':'▼'} €${Math.abs(gain).toFixed(2)} (${Math.abs(gainPct).toFixed(2)}%)</div>
+            </div>
+            ${sp ? `
+            <div style="background:#e3f2fd;border-radius:10px;padding:14px">
+              <div style="font-size:11px;color:#1565c0;font-weight:600;text-transform:uppercase;letter-spacing:.5px">S&P 500 index</div>
+              <div style="font-size:22px;font-weight:500;color:#1565c0;margin-top:4px">${sp.price.toLocaleString('nl-NL',{maximumFractionDigits:0})}</div>
+              <div style="font-size:12px;color:${dayUp?'#2e7d32':'#c62828'};margin-top:2px">${dayUp?'▲':'▼'} ${Math.abs(sp.dayChange).toFixed(2)}% vandaag</div>
+            </div>` : ''}
+          </div>
+          ${recentDeposits.length ? `
+          <div style="font-size:12px;font-weight:600;color:#757575;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Recente stortingen</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${recentDeposits.map(d => `
+              <div style="background:#f5f5f5;border-radius:8px;padding:6px 12px;font-size:12px">
+                <span style="color:#757575">${d.date}</span>
+                <span style="font-weight:600;margin-left:6px;color:#2e9e47">+€${d.amount.toFixed(2)}</span>
+              </div>`).join('')}
+          </div>` : ''}
+        </div>
+      </div>`;
+  } catch {}
+}
+
+function buildInvestData(transactions) {
+  const roundups = transactions.filter(t => t.type === 'out' && Math.abs(t.amount) < 1.0 && !t.counterparty?.trim().replace('?',''));
+  const cashback = transactions.filter(t => t.type === 'in' && (t.description?.toLowerCase().includes('gefeliciteerd') || t.description?.toLowerCase().includes('cashback') || t.description?.toLowerCase().includes('%')));
+  const totalInvested = roundups.reduce((s,t) => s + Math.abs(t.amount), 0);
+  const totalCashback = cashback.reduce((s,t) => s + t.amount, 0);
+
+  // Monthly round-ups
+  const monthly = {};
+  for (const t of roundups) {
+    if (!t.date) continue;
+    const m = t.date.slice(0,7);
+    monthly[m] = (monthly[m] || 0) + Math.abs(t.amount);
+  }
+  return { roundups, cashback, totalInvested, totalCashback, monthly };
+}
+
+function buildCategories(transactions) {
+  const out = transactions.filter(t => t.type === 'out');
+  const map = {};
+  for (const t of out) {
+    const key = guessCategory(t.counterparty, t.description, t.amount);
+    map[key] = (map[key] || 0) + Math.abs(t.amount);
+  }
+  return Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, 7);
+}
+
+function guessCategory(name, desc, amount) {
+  const s = ((name||'')+(desc||'')).toLowerCase();
+  if (Math.abs(amount||0) < 1.0 && !s.replace(/\?/g,'').trim()) return '💹 Beleggen';
+  if (/jumbo|spar|lidl|aldi|plus |coop/.test(s)) return '🛒 Boodschappen';
+  if (/ns |trein|ov-chip|arriva|connexxion|gvb|ret |htm |uber|bolt/.test(s)) return '🚆 Vervoer';
+  if (/bar |club |kroeg|nachtclub|dancing|lounge|shots|cocktail|heineken|biertje|nightlife|paradiso|melkweg|bitterzoet|de buren/.test(s)) return '🎉 Uitgaan';
+  if (/albert|ah |dirk|restaurant|mcdonalds|thuisbezorgd|deliveroo|ubereats|pizza|sushi|snack|subway|burger|kfc|dominos|wolt|café|cafe|koffie|coffee|starbucks|bakker|brood|lunch|brunch/.test(s)) return '🍔 Eten';
+  if (/spotify|netflix|disney|videoland|prime|hbo|youtube|apple|game|steam/.test(s)) return '🎮 Abonnementen';
+  if (/zara|h&m|primark|uniqlo|kleding|shoes|sneaker|nike|adidas/.test(s)) return '👕 Kleding';
+  if (/shell|bp|esso|tinq|tango|brandstof|tankstation/.test(s)) return '⛽ Brandstof';
+  if (/gym|sport|fitness|running|yoga/.test(s)) return '💪 Sport';
+  if (/dokter|apotheek|zorg|verzeker|health|tandarts/.test(s)) return '🏥 Zorg';
+  if (/huur|rent|hypotheek|energie|water|internet|ziggo|kpn|odido/.test(s)) return '🏠 Wonen';
+  if (/salaris|loon|inkomen|werkgever/.test(s)) return '💼 Inkomen';
+  return '📦 Overig';
+}
+
+function buildMonthlyBars(transactions) {
+  const months = {};
+  for (const t of transactions) {
+    if (!t.date) continue;
+    const m = t.date.slice(0, 7);
+    if (!months[m]) months[m] = { in: 0, out: 0 };
+    if (t.type === 'in') months[m].in += t.amount;
+    else months[m].out += Math.abs(t.amount);
+  }
+  const keys = Object.keys(months).sort().slice(-4);
+  const NL_MONTH = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  return {
+    labels: keys.map(k => NL_MONTH[parseInt(k.slice(5))-1] + ' ' + k.slice(2,4)),
+    income: keys.map(k => months[k].in),
+    expenses: keys.map(k => months[k].out),
+  };
+}
+
+function renderFinance(data) {
+  const { accounts = [], transactions = [], insights, lastFetch } = data;
+  const lastStr = lastFetch ? new Date(lastFetch).toLocaleString('nl-NL') : '—';
+
+  const main = accounts.find(a => /hoofd/i.test(a.description)) || accounts.find(a => a.type === 'checking') || accounts[0] || {};
+  const balance = main.balance || 0;
+  const totalIn  = transactions.filter(t=>t.type==='in').reduce((s,t)=>s+t.amount, 0);
+  const totalOut = transactions.filter(t=>t.type==='out').reduce((s,t)=>s+Math.abs(t.amount), 0);
+
+  document.getElementById('financeContent').innerHTML = `
+    <div class="fin-hero">
+      <div class="fin-hero-left">
+        <h2>Saldo</h2>
+        <div class="total-balance">€${balance.toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+        <div class="balance-sub">Bijgewerkt: ${lastStr}</div>
+      </div>
+      <div class="fin-hero-right">
+        <div class="fin-hero-stat">
+          <div class="stat-label">Bijgestort</div>
+          <div class="stat-val pos">+€${totalIn.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+        <div class="fin-hero-stat">
+          <div class="stat-label">Uitgaven</div>
+          <div class="stat-val neg">-€${totalOut.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+        </div>
+        <div class="fin-hero-stat">
+          <div class="stat-label">&nbsp;</div>
+          <div style="margin-top:6px"><button onclick="refreshFinance()" style="background:rgba(255,255,255,.2);border:none;color:white;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px">🔄 Vernieuwen</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fin-row">
+      <div class="fin-card">
+        <div class="fin-card-head"><h3>📊 Uitgaven per categorie</h3></div>
+        <div class="fin-card-body">
+          <div style="display:flex;gap:16px;align-items:center">
+            <div class="chart-wrap" style="height:180px;width:180px;flex-shrink:0"><canvas id="donutCanvas"></canvas></div>
+            <div style="flex:1" id="catLegend"></div>
+          </div>
+        </div>
+      </div>
+      <div class="fin-card">
+        <div class="fin-card-head"><h3>📈 Uitgaven per maand</h3></div>
+        <div class="fin-card-body">
+          <div class="chart-wrap"><canvas id="barCanvas"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="investSection"></div>
+
+    ${insights ? `<div class="insights-box"><h3>🧠 AI-analyse</h3><p>${escHtml(insights)}</p></div>` : ''}
+
+    <div class="tx-list">
+      <div class="tx-list-head">
+        <h3>Recente transacties</h3>
+        <span style="font-size:12px;color:#9e9e9e">${transactions.length} transacties</span>
+      </div>
+      ${transactions.slice(0,40).map(t => {
+        const initials = (t.counterparty||'?').slice(0,2).toUpperCase();
+        const color = avatarColor(t.counterparty);
+        return `<div class="tx-row">
+          <div class="tx-avatar" style="background:${color}">${initials}</div>
+          <div class="tx-info">
+            <div class="tx-name">${escHtml(t.counterparty)}</div>
+            <div class="tx-desc">${escHtml(t.description)}</div>
+          </div>
+          <div class="tx-right">
+            <div class="tx-amount ${t.type}">${t.type==='out'?'-':'+'}€${Math.abs(t.amount).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+            <div class="tx-date">${t.date||''}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  // Load investment tracker async
+  loadAndRenderInvestments();
+
+  // Destroy old charts
+  if (donutChart) { donutChart.destroy(); donutChart = null; }
+  if (barChart)   { barChart.destroy();   barChart = null; }
+
+  // Donut chart
+  const cats = buildCategories(transactions);
+  if (cats.length) {
+    const colors = cats.map((_,i) => catColor(i));
+    donutChart = new Chart(document.getElementById('donutCanvas'), {
+      type: 'doughnut',
+      data: { labels: cats.map(c=>c[0]), datasets: [{ data: cats.map(c=>c[1]), backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+      options: { cutout: '68%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` €${ctx.parsed.toFixed(2)}` } } } }
+    });
+    const maxVal = cats[0][1];
+    document.getElementById('catLegend').innerHTML = cats.map((c,i) => `
+      <div class="cat-row">
+        <div class="cat-dot" style="background:${colors[i]}"></div>
+        <div class="cat-label">${c[0]}</div>
+        <div class="cat-bar-wrap"><div class="cat-bar" style="width:${(c[1]/maxVal*100).toFixed(0)}%;background:${colors[i]}"></div></div>
+        <div class="cat-amount">€${c[1].toFixed(0)}</div>
+      </div>`).join('');
+  }
+
+  // Bar chart
+  const mb = buildMonthlyBars(transactions);
+  if (mb.labels.length) {
+    barChart = new Chart(document.getElementById('barCanvas'), {
+      type: 'bar',
+      data: {
+        labels: mb.labels,
+        datasets: [
+          { label: 'Uitgaven', data: mb.expenses, backgroundColor: '#ffcdd2', borderColor: '#e53935', borderWidth: 2, borderRadius: 6 }
+        ]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '€'+v } } } }
+    });
+  }
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'finance' && document.getElementById('financeContent').textContent.includes('Laden')) {
+      initFinance();
+    }
+  });
+});
+
+// ── Mail ─────────────────────────────────────────────────────────────────
+let mailData = [];
+
+async function initMail() {
+  const status = await fetch('/api/gmail/status').then(r => r.json());
+  if (!status.connected) {
+    renderMailConnect();
+  } else {
+    const cache = await fetch('/api/gmail/mails').then(r => r.json());
+    mailData = cache.mails || [];
+    renderMailInbox(cache);
+  }
+}
+
+function renderMailConnect() {
+  document.getElementById('mailContent').innerHTML = `
+    <div class="mail-connect-box">
+      <div class="icon">📧</div>
+      <h3>Gmail verbinden</h3>
+      <p>Verbind je Gmail-account zodat de assistent je inbox kan lezen en samenvatten.</p>
+      <button class="upload-btn" onclick="connectGmail()">🔗 Verbind Gmail</button>
+      <p style="margin-top:12px;font-size:12px;color:#aaa">Je mails worden nooit opgeslagen of verstuurd zonder jouw toestemming.</p>
+    </div>`;
+}
+
+async function connectGmail() {
+  const r = await fetch('/api/gmail/auth').then(r => r.json());
+  if (r.error) { showToast('❌ ' + r.error, 'error'); return; }
+  const win = window.open(r.url, '_blank', 'width=500,height=600');
+  const timer = setInterval(async () => {
+    try {
+      const s = await fetch('/api/gmail/status').then(r => r.json());
+      if (s.connected) { clearInterval(timer); win?.close(); initMail(); showToast('✅ Gmail verbonden!', 'success'); }
+    } catch {}
+  }, 2000);
+}
+
+async function refreshMail() {
+  const btn = document.getElementById('mailRefreshBtn');
+  if (btn) { btn.textContent = '⏳ Laden...'; btn.disabled = true; }
+  try {
+    const r = await fetch('/api/gmail/fetch', { method: 'POST' }).then(r => r.json());
+    if (r.error) { showToast('❌ ' + r.error, 'error'); }
+    else { mailData = r.mails || []; renderMailInbox(r); showToast('✅ Inbox vernieuwd!', 'success'); }
+  } catch { showToast('❌ Mislukt', 'error'); }
+  if (btn) { btn.textContent = '🔄 Vernieuwen'; btn.disabled = false; }
+}
+
+function renderMailInbox(data) {
+  const mails = data.mails || [];
+  const lastFetch = data.lastFetch ? new Date(data.lastFetch).toLocaleString('nl-NL') : '—';
+
+  const urgent  = mails.filter(m => m.priority === 'urgent');
+  const waiting = mails.filter(m => m.priority === 'waiting');
+  const info    = mails.filter(m => m.priority === 'info');
+
+  const statsHtml = `
+    <div class="mail-stats">
+      <div class="mail-stat urgent">🔴 ${urgent.length} actie vereist</div>
+      <div class="mail-stat waiting">🟡 ${waiting.length} kan wachten</div>
+      <div class="mail-stat info">⚪ ${info.length} ter info</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:12px;color:#9e9e9e">Bijgewerkt: ${lastFetch}</span>
+      <button class="upload-btn" id="mailRefreshBtn" onclick="refreshMail()" style="padding:7px 14px;font-size:12px">🔄 Vernieuwen</button>
+    </div>`;
+
+  const sectionHtml = (title, items) => {
+    if (!items.length) return '';
+    return `<div class="mail-section">
+      <div class="mail-section-title">${title}</div>
+      ${items.map(m => mailCardHtml(m)).join('')}
+    </div>`;
+  };
+
+  document.getElementById('mailContent').innerHTML = `
+    <div class="mail-toolbar">${statsHtml}</div>
+    ${mails.length === 0
+      ? '<div style="text-align:center;padding:60px;color:#757575">Geen mails gevonden. Klik op Vernieuwen.</div>'
+      : sectionHtml('🔥 Actie vereist', urgent) +
+        sectionHtml('⏳ Kan wachten', waiting) +
+        sectionHtml('ℹ️ Ter info', info)
+    }`;
+}
+
+function mailCardHtml(m) {
+  const fromName = m.from?.match(/^([^<]+)/)?.[1]?.trim() || m.from || '—';
+  const dateStr  = m.date ? new Date(m.date).toLocaleDateString('nl-NL', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+  const tags = [
+    m.needsReply  ? '<span class="mail-tag reply">↩ Reactie verwacht</span>' : '',
+    m.deadline    ? `<span class="mail-tag deadline">⏰ ${m.deadline}</span>` : '',
+    m.action      ? '<span class="mail-tag action">⚡ Actie nodig</span>' : ''
+  ].filter(Boolean).join('');
+
+  return `<div class="mail-card ${m.priority} ${m.isRead ? '' : 'unread'}" onclick="openMail('${m.id}')">
+    <div class="mail-card-inner">
+      <div class="mail-row1">
+        <div class="mail-from">${escHtml(fromName)}</div>
+        <div class="mail-date">${dateStr}</div>
+      </div>
+      <div class="mail-subject">${escHtml(m.subject)}</div>
+      <div class="mail-summary">${escHtml(m.summary || m.snippet || '')}</div>
+      ${tags ? `<div class="mail-tags">${tags}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function openMail(id) {
+  const m = mailData.find(x => x.id === id);
+  if (!m) return;
+  const fromName = m.from || '—';
+  document.getElementById('mailModalTitle').textContent = m.subject || '(geen onderwerp)';
+  document.getElementById('mailModalBody').innerHTML = `
+    <div class="mail-detail-header">
+      <div class="mail-detail-subject">${escHtml(m.subject)}</div>
+      <div class="mail-detail-meta">
+        <b>Van:</b> ${escHtml(fromName)}<br>
+        <b>Aan:</b> ${escHtml(m.to || '')}<br>
+        <b>Datum:</b> ${m.date || ''}
+      </div>
+    </div>
+    <div class="modal-body" style="padding-top:0">
+      ${m.summary ? `<div class="mail-detail-summary">🧠 <b>Samenvatting:</b><br>${escHtml(m.summary)}</div>` : ''}
+      ${m.action  ? `<div style="background:#fce4ec;color:#c62828;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px">⚡ <b>Actie:</b> ${escHtml(m.action)}</div>` : ''}
+      ${m.deadline? `<div style="background:#fff3e0;color:#e65100;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:10px">⏰ <b>Deadline:</b> ${escHtml(m.deadline)}</div>` : ''}
+      <div class="mail-detail-body">${escHtml(m.body || m.snippet || '')}</div>
+    </div>`;
+  document.getElementById('mailModalOverlay').classList.add('open');
+}
+
+function closeMailModal(e) {
+  if (!e || e.target === document.getElementById('mailModalOverlay'))
+    document.getElementById('mailModalOverlay').classList.remove('open');
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Init mail when tab is opened
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'mail' && document.getElementById('mailContent').textContent.includes('Laden')) {
+      initMail();
+    }
+  });
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────
+loadSchedule();
+loadSummaries();
+setTimeout(checkForRowPicker, 1000);
+</script>
+</body>
+</html>
