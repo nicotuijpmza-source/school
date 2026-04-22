@@ -476,6 +476,10 @@ function parseScheduleData() {
 
 // ─── WhatsApp ───────────────────────────────────────────────────────────────
 
+// Verwijder Chromium lock-bestand zodat herstart na crash werkt
+const lockFile = path.join(__dirname, '.wwebjs_auth', 'session', 'SingletonLock');
+if (fs.existsSync(lockFile)) { try { fs.unlinkSync(lockFile); } catch {} }
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
