@@ -500,13 +500,13 @@ async function initWhatsApp() {
     // Verwijder bestaande Chrome processen voor een schone start
     try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
 
-    // Timeout: als na 90s geen enkel event vuurt, sessie wissen en opnieuw proberen
+    // Timeout: als na 3 minuten geen enkel event vuurt, sessie wissen en opnieuw proberen
     const initTimeout = setTimeout(async () => {
         console.error('WhatsApp init timeout — opnieuw starten');
         try { await client.destroy(); } catch {}
         clearWaSession();
         setTimeout(() => initWhatsApp(), 3000);
-    }, 90000);
+    }, 180000);
 
     client.once('qr', () => clearTimeout(initTimeout));
     client.once('ready', () => clearTimeout(initTimeout));
@@ -815,6 +815,26 @@ app.get('/api/qr', async (req, res) => {
     const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
     res.setHeader('Content-Type', 'image/png');
     res.send(Buffer.from(base64, 'base64'));
+});
+
+// Dedicated QR pagina — ververst automatisch elke 3s
+app.get('/qr', (req, res) => {
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>WhatsApp QR</title>
+<meta http-equiv="refresh" content="3">
+<style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5}
+.box{background:white;padding:32px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.1);text-align:center}
+h2{margin:0 0 8px;color:#111}p{color:#666;margin:0 0 20px;font-size:14px}
+img{width:280px;height:280px;display:block}
+.status{margin-top:16px;font-size:13px;padding:6px 12px;border-radius:8px;background:#f0f2f5}</style></head>
+<body><div class="box">
+<h2>WhatsApp koppelen</h2>
+<p>Instellingen → Gekoppelde apparaten → Apparaat koppelen</p>
+${waQR ? `<img src="/api/qr?t=${Date.now()}">
+<div class="status" style="color:#e67e22">⏳ Scan de QR code — pagina ververst elke 3 seconden</div>`
+: waStatus === 'connected' ? `<div class="status" style="color:#27ae60;font-size:16px">✅ WhatsApp is verbonden!</div>`
+: `<div class="status" style="color:#888">⏳ Wachten op QR... pagina ververst automatisch</div>`}
+</div></body></html>`);
 });
 
 app.get('/api/whatsapp/groups', async (req, res) => {
