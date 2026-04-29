@@ -28,10 +28,17 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const GROUPS = ['Out en nieuw', 'Le Pompadour☕🥂', 'De Petjes (met kleinkinderen)'];
 const matchGroup = name => GROUPS.find(g => name === g || name.startsWith(g));
 const MY_NAME = 'Nico';
-const SCHEDULE_FILE = path.join(__dirname, 'schedule.json');
-const SUMMARIES_FILE = path.join(__dirname, 'summaries.json');
-const HVA_FILE = path.join(__dirname, 'hva.json');
-const MESSAGES_FILE = path.join(__dirname, 'messages.json');
+
+// Databestanden op volume zodat ze deployments overleven
+const DATA_DIR = process.env.NODE_ENV === 'production'
+    ? '/app/.wwebjs_auth/data'
+    : __dirname;
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const SCHEDULE_FILE  = path.join(DATA_DIR, 'schedule.json');
+const SUMMARIES_FILE = path.join(DATA_DIR, 'summaries.json');
+const HVA_FILE       = path.join(DATA_DIR, 'hva.json');
+const MESSAGES_FILE  = path.join(DATA_DIR, 'messages.json');
 
 let waStatus = 'disconnected';
 let waQR = null;
@@ -567,6 +574,7 @@ function createClient() {
         cron.schedule('0 18 * * *', () => sendDailySummary(), { timezone: 'Europe/Amsterdam' });
         cron.schedule('0 6 * * *', () => fetchHvaSchedule(), { timezone: 'Europe/Amsterdam' });
         cron.schedule('0 7,12 * * *', () => fetchAndClassifyMails().catch(() => {}), { timezone: 'Europe/Amsterdam' });
+        cron.schedule('0 8 * * *', () => fetchRoosterFromKevin().catch(e => console.error('Rooster cron fout:', e.message)), { timezone: 'Europe/Amsterdam' });
         fetchHvaSchedule();
         setTimeout(() => {
             fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
@@ -1027,13 +1035,13 @@ async function fetchRoosterFromKevin() {
         try { await OpenChat?.open(chat); } catch {}
         await new Promise(r => setTimeout(r, 5000));
 
-        // Laad eerdere berichten (max 3 rondes van 100)
+        // Laad eerdere berichten (max 15 rondes om ver genoeg terug te gaan)
         if (ConvMsgs) {
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 15; i++) {
                 try {
                     const loaded = await ConvMsgs.loadEarlierMsgs(chat, chat.msgs);
                     if (!loaded?.length) break;
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 500));
                 } catch(e) { break; }
             }
         }
@@ -1155,9 +1163,14 @@ app.post('/api/chat', async (req, res) => {
 // ─── Bunq ────────────────────────────────────────────────────────────────────
 
 const BUNQ_BASE = 'https://api.bunq.com';
-const BUNQ_CONTEXT_FILE  = path.join(__dirname, 'bunq_context.json');
-const BUNQ_CACHE_FILE    = path.join(__dirname, 'bunq_cache.json');
-const INVESTMENTS_FILE   = path.join(__dirname, 'investments.json');
+const BUNQ_CONTEXT_FILE  = path.join(DATA_DIR, 'bunq_context.json');
+const BUNQ_CACHE_FILE    = path.join(DATA_DIR, 'bunq_cache.json');
+const INVESTMENTS_FILE   = path.join(DATA_DIR, 'investments.json');
+const INVESTMENTS_SEED   = path.join(__dirname, 'investments.json');
+// Kopieer seed investments naar volume als die er nog niet staat
+if (!fs.existsSync(INVESTMENTS_FILE) && fs.existsSync(INVESTMENTS_SEED)) {
+    fs.copyFileSync(INVESTMENTS_SEED, INVESTMENTS_FILE);
+}
 
 function loadBunqContext() {
     if (fs.existsSync(BUNQ_CONTEXT_FILE)) return JSON.parse(fs.readFileSync(BUNQ_CONTEXT_FILE, 'utf8'));
@@ -1395,23 +1408,7 @@ async function getInvestmentStatus() {
     const data = loadInvestments();
     const sp500 = await fetchSP500();
 
-    // Detect NEW round-up deposits (excluding IDs already baked into snapshot)
-    const excludedIds = new Set(data.positions[0]?.excludedIds || []);
-    const knownIds = new Set([...excludedIds, ...data.deposits.map(d => d.id)]);
-    const bunq = loadBunqCache();
-    if (bunq?.transactions) {
-        const roundups = bunq.transactions.filter(t =>
-            t.type === 'out' && Math.abs(t.amount) < 1.0 &&
-            !t.counterparty?.trim().replace('?','') &&
-            !knownIds.has(t.id)
-        );
-        for (const t of roundups) {
-            data.deposits.push({ id: t.id, amount: Math.abs(t.amount), date: t.date });
-            knownIds.add(t.id);
-        }
-    }
-
-    // Snapshot value + only NEW deposits on top
+    // Snapshot value + handmatige deposits
     const snapshotValue  = data.positions.reduce((s, p) => s + p.invested, 0);
     const newDeposits    = data.deposits.reduce((s, d) => s + d.amount, 0);
     const totalDeposited = snapshotValue + newDeposits;
@@ -1488,4 +1485,18 @@ app.post('/api/investments/set', (req, res) => {
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 app.listen(3000, () => console.log('App beschikbaar op http://localhost:3000'));
+
+// Bunq automatisch koppelen bij startup en elk uur verversen
+async function initBunq() {
+    try {
+        await getBunqContext();
+        await fetchBunqData();
+        console.log('✅ Bunq verbonden en data opgehaald');
+    } catch(e) {
+        console.error('Bunq init fout:', e.message);
+    }
+}
+initBunq();
+cron.schedule('0 * * * *', () => fetchBunqData().catch(e => console.error('Bunq refresh fout:', e.message)), { timezone: 'Europe/Amsterdam' });
+
 initWhatsApp();
