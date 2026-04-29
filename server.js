@@ -939,27 +939,32 @@ async function fetchRoosterFromKevin() {
     const chats = await getChatsWithRetry();
     const privateChats = chats.filter(c => !c.isGroup);
 
-    let kevinChat = null;
+    let kevinId = null;
     for (const chat of privateChats) {
         try {
             const contact = await chat.getContact();
             const name = (contact.name || contact.pushname || chat.name || '').toLowerCase();
-            if (name.includes('kevin')) { kevinChat = chat; break; }
+            if (name.includes('kevin')) { kevinId = chat.id._serialized; break; }
         } catch {}
     }
-    if (!kevinChat) kevinChat = privateChats.find(c => (c.name || '').toLowerCase().includes('kevin')) || null;
-    if (!kevinChat) throw new Error('Geen chat met Kevin gevonden');
+    if (!kevinId) {
+        const fallback = privateChats.find(c => (c.name || '').toLowerCase().includes('kevin'));
+        kevinId = fallback?.id._serialized || null;
+    }
+    if (!kevinId) throw new Error('Geen chat met Kevin gevonden');
+    console.log('Kevin chat gevonden:', kevinId);
 
     let messages;
     for (let attempt = 0; attempt < 4; attempt++) {
         try {
-            if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 3000));
+            if (attempt > 0) await new Promise(r => setTimeout(r, 15000));
+            // getChatById laadt het chat-model opnieuw zodat fetchMessages werkt
+            const kevinChat = await client.getChatById(kevinId);
             messages = await kevinChat.fetchMessages({ limit: 100 });
             break;
         } catch (e) {
             console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message);
             if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message}`);
-            await new Promise(r => setTimeout(r, 15000));
         }
     }
 
