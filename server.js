@@ -485,6 +485,37 @@ try {
     execSync(`find "${authDir}" -name "*.lock" -exec rm -f {} \\; 2>/dev/null || true`);
 } catch {}
 
+const WWEBJS_AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
+
+function clearWaSession() {
+    try {
+        require('child_process').execSync(`rm -rf "${WWEBJS_AUTH_DIR}/session-default" 2>/dev/null || true`);
+        console.log('WhatsApp sessie gewist');
+    } catch {}
+}
+
+function initWhatsApp() {
+    console.log('WhatsApp client starten...');
+
+    // Timeout: als na 90s geen enkel event vuurt, sessie wissen en opnieuw proberen
+    const initTimeout = setTimeout(() => {
+        console.error('WhatsApp init timeout — sessie wissen en opnieuw starten');
+        clearWaSession();
+        setTimeout(() => initWhatsApp(), 3000);
+    }, 90000);
+
+    client.once('qr', () => clearTimeout(initTimeout));
+    client.once('ready', () => clearTimeout(initTimeout));
+    client.once('auth_failure', () => clearTimeout(initTimeout));
+
+    client.initialize().catch(e => {
+        clearTimeout(initTimeout);
+        console.error('WhatsApp initialize fout:', e.message);
+        clearWaSession();
+        setTimeout(() => initWhatsApp(), 5000);
+    });
+}
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -495,7 +526,8 @@ const client = new Client({
             '--disable-dev-shm-usage',
             '--disable-gpu',
             '--no-zygote',
-            '--single-process'
+            '--disable-extensions',
+            '--no-first-run'
         ]
     }
 });
@@ -511,11 +543,8 @@ client.on('auth_failure', (msg) => {
     console.error('WhatsApp auth mislukt:', msg);
     waStatus = 'disconnected';
     waQR = null;
-    // Verwijder corrupte sessie en herstart
-    try {
-        require('child_process').execSync(`rm -rf "${path.join(__dirname, '.wwebjs_auth')}/session-default" 2>/dev/null || true`);
-    } catch {}
-    setTimeout(() => client.initialize(), 3000);
+    clearWaSession();
+    setTimeout(() => initWhatsApp(), 3000);
 });
 
 client.on('ready', () => {
@@ -1340,4 +1369,4 @@ app.post('/api/investments/set', (req, res) => {
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 app.listen(3000, () => console.log('App beschikbaar op http://localhost:3000'));
-client.initialize();
+initWhatsApp();
