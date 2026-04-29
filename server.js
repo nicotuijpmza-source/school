@@ -977,29 +977,23 @@ async function fetchRoosterFromKevin() {
         kevinIds.push(kevinContact.id._serialized);
     console.log('Kevin IDs:', kevinIds);
 
-    // Patch WWebJS.getMessages om waitForChatLoading te omzeilen
-    await client.pupPage.evaluate(() => {
-        if (window.__wwebjsPatched) return;
-        window.__wwebjsPatched = true;
-        const orig = window.WWebJS?.getMessages;
-        if (!orig) return;
-        window.WWebJS.getMessages = async function(chatId, searchOptions) {
-            try {
-                return await orig.call(this, chatId, searchOptions);
-            } catch(e) {
-                if (!e.message?.includes('waitForChatLoading')) throw e;
-                // Fallback: probeer chat te vinden en berichten direct te lezen
-                const wid = window.Store?.WidFactory?.createWid?.(chatId) || chatId;
-                const chat = window.Store?.Chat?.get(wid) || window.Store?.Chat?.get(chatId);
-                if (!chat) return [];
-                const limit = searchOptions?.limit || 50;
-                const models = chat.msgs?.models || [];
-                return models.slice(-limit).map(m => {
-                    try { return window.WWebJS.parseMessage(m.id?.remote, m); } catch { return null; }
-                }).filter(Boolean);
+    // Klik Kevin's chat aan in de WhatsApp Web UI zodat berichten geladen worden
+    const chatOpened = await client.pupPage.evaluate((num) => {
+        const items = document.querySelectorAll('[data-testid="cell-frame-container"], [role="listitem"], ._ak8l, li');
+        for (const item of items) {
+            const title = item.querySelector('[data-testid="cell-frame-title"], ._ao3e, span[title]');
+            const text = (title?.textContent || title?.getAttribute('title') || item.textContent || '').toLowerCase();
+            if (text.includes('kevin') || text.includes(num)) {
+                item.click();
+                return true;
             }
-        };
-    }).catch(() => {});
+        }
+        return false;
+    }, '31653991695').catch(() => false);
+
+    console.log('Chat geopend via UI:', chatOpened);
+    // Wacht tot berichten geladen zijn
+    await new Promise(r => setTimeout(r, 8000));
 
     let messages;
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -1015,6 +1009,27 @@ async function fetchRoosterFromKevin() {
                 } catch(e) { console.log(`fetchMessages mislukt voor ${kid}:`, e.message.split('\n')[0]); }
             }
             if (messages?.length) break;
+
+            // Probeer via Msg store na UI-opening
+            const msgIds = await client.pupPage.evaluate((ids, limit) => {
+                const Chat = window.Store?.Chat;
+                if (!Chat) return [];
+                const num = ids[0].split('@')[0];
+                const chat = ids.map(id => Chat.get(id)).find(Boolean) ||
+                    Chat.getModels?.().find(m => m.id?.user === num || String(m.id?.user).includes(num));
+                if (!chat) return [];
+                return (chat.msgs?.models || []).slice(-limit).map(m => m.id?._serialized).filter(Boolean);
+            }, kevinIds, 100);
+
+            console.log(`Msg store na UI-open: ${msgIds.length} berichten`);
+            if (!msgIds.length) throw new Error('Berichten nog niet geladen in store');
+
+            messages = [];
+            for (const id of msgIds) {
+                try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch {}
+            }
+            if (messages.length) break;
+            throw new Error('getMessageById leverde geen resultaten');
 
             // Fallback: zoek via Msg store op alle bekende IDs
             const msgIds = await client.pupPage.evaluate((ids, limit) => {
