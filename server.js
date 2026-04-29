@@ -977,62 +977,88 @@ async function fetchRoosterFromKevin() {
         kevinIds.push(kevinContact.id._serialized);
     console.log('Kevin IDs:', kevinIds);
 
-    // Klik Kevin's chat aan in de WhatsApp Web UI zodat berichten geladen worden
-    const chatOpened = await client.pupPage.evaluate((num) => {
-        const items = document.querySelectorAll('[data-testid="cell-frame-container"], [role="listitem"], ._ak8l, li');
-        for (const item of items) {
-            const title = item.querySelector('[data-testid="cell-frame-title"], ._ao3e, span[title]');
-            const text = (title?.textContent || title?.getAttribute('title') || item.textContent || '').toLowerCase();
-            if (text.includes('kevin') || text.includes(num)) {
-                item.click();
-                return true;
+    // Open chat en laad berichten via Store API (bypasses waitForChatLoading bug voor @lid)
+    const mediaIds = await client.pupPage.evaluate(async (ids) => {
+        const num = ids[0].split('@')[0];
+        const Chat = window.Store?.Chat;
+        const FindOrCreate = window.Store?.FindOrCreateChat;
+        const ConvMsgs = window.Store?.ConversationMsgs;
+        const OpenChat = window.Store?.OpenChat;
+        if (!Chat) return { error: 'Store niet beschikbaar' };
+
+        // Vind het chat model
+        let chat = null;
+        for (const id of ids) {
+            try {
+                const wid = window.Store.WidFactory.createWid(id);
+                chat = Chat.get(wid);
+                if (chat) break;
+            } catch {}
+        }
+        if (!chat && FindOrCreate) {
+            for (const id of ids) {
+                try {
+                    const wid = window.Store.WidFactory.createWid(id);
+                    const r = await FindOrCreate.findOrCreateLatestChat(wid);
+                    if (r?.chat) { chat = r.chat; break; }
+                } catch {}
             }
         }
-        return false;
-    }, '31653991695').catch(() => false);
+        if (!chat) {
+            // Fallback: zoek op nummer in alle chats
+            chat = Chat.getModels?.().find(m =>
+                String(m.id?.user) === num || String(m.id?.user).includes(num)
+            ) || null;
+        }
+        if (!chat) return { error: 'Chat niet gevonden', ids };
 
-    console.log('Chat geopend via UI:', chatOpened);
-    // Wacht tot berichten geladen zijn
-    await new Promise(r => setTimeout(r, 8000));
+        // Patch waitForChatLoading zodat loadEarlierMsgs niet crasht
+        if (!chat.waitForChatLoading) chat.waitForChatLoading = async () => {};
 
-    let messages;
-    for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-            if (attempt > 0) await new Promise(r => setTimeout(r, 15000));
+        // Open chat via Store API
+        try { await OpenChat?.open(chat); } catch {}
+        await new Promise(r => setTimeout(r, 5000));
 
-            // Probeer fetchMessages op elk ID
-            for (const kid of kevinIds) {
+        // Laad eerdere berichten (max 3 rondes van 100)
+        if (ConvMsgs) {
+            for (let i = 0; i < 3; i++) {
                 try {
-                    const chat = await client.getChatById(kid);
-                    messages = await chat.fetchMessages({ limit: 100 });
-                    if (messages?.length) { console.log(`fetchMessages gelukt via ${kid}: ${messages.length} berichten`); break; }
-                } catch(e) { console.log(`fetchMessages mislukt voor ${kid}:`, e.message.split('\n')[0]); }
+                    const loaded = await ConvMsgs.loadEarlierMsgs(chat, chat.msgs);
+                    if (!loaded?.length) break;
+                    await new Promise(r => setTimeout(r, 1000));
+                } catch(e) { break; }
             }
-            if (messages?.length) break;
+        }
 
-            // Probeer via Msg store na UI-opening
-            const msgIds = await client.pupPage.evaluate((ids, limit) => {
-                const Chat = window.Store?.Chat;
-                if (!Chat) return [];
-                const num = ids[0].split('@')[0];
-                const chat = ids.map(id => Chat.get(id)).find(Boolean) ||
-                    Chat.getModels?.().find(m => m.id?.user === num || String(m.id?.user).includes(num));
-                if (!chat) return [];
-                return (chat.msgs?.models || []).slice(-limit).map(m => m.id?._serialized).filter(Boolean);
-            }, kevinIds, 100);
+        const models = chat.msgs?.getModelsArray?.() || chat.msgs?.models || [];
+        console.log('Berichten in store na laden:', models.length);
 
-            console.log(`Msg store na UI-open: ${msgIds.length} berichten`);
-            if (!msgIds.length) throw new Error('Berichten nog niet geladen in store');
+        const mediaMessageIds = models
+            .filter(m => {
+                if (!m.hasMedia && m.type !== 'document') return false;
+                const fname = (m.filename || m.caption || '').toLowerCase();
+                const mime = (m.mimetype || '').toLowerCase();
+                return fname.match(/\.(xlsx|xls|ods|pdf)$/) ||
+                    mime.includes('spreadsheet') || mime.includes('excel') ||
+                    mime.includes('officedocument') || mime.includes('pdf') ||
+                    m.type === 'document';
+            })
+            .map(m => m.id?._serialized)
+            .filter(Boolean);
 
-            messages = [];
-            for (const id of msgIds) {
-                try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch {}
-            }
-            if (messages.length) break;
-            throw new Error('getMessageById leverde geen resultaten');
-        } catch (e) {
-            console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message.split('\n')[0]);
-            if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message.split('\n')[0]}`);
+        return { chatId: chat.id?._serialized, total: models.length, mediaIds: mediaMessageIds };
+    }, kevinIds);
+
+    console.log('Store resultaat:', JSON.stringify({ chatId: mediaIds?.chatId, total: mediaIds?.total, mediaCount: mediaIds?.mediaIds?.length, error: mediaIds?.error }));
+
+    if (mediaIds?.error || !mediaIds?.mediaIds?.length) {
+        throw new Error(mediaIds?.error || `Geen mediaberichten gevonden (${mediaIds?.total || 0} berichten geladen)`);
+    }
+
+    let messages = [];
+    for (const id of mediaIds.mediaIds) {
+        try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch(e) {
+            console.log(`getMessageById mislukt voor ${id}:`, e.message.split('\n')[0]);
         }
     }
 
