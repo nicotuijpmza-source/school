@@ -957,6 +957,30 @@ async function fetchRoosterFromKevin() {
         kevinIds.push(kevinContact.id._serialized);
     console.log('Kevin IDs:', kevinIds);
 
+    // Patch WWebJS.getMessages om waitForChatLoading te omzeilen
+    await client.pupPage.evaluate(() => {
+        if (window.__wwebjsPatched) return;
+        window.__wwebjsPatched = true;
+        const orig = window.WWebJS?.getMessages;
+        if (!orig) return;
+        window.WWebJS.getMessages = async function(chatId, searchOptions) {
+            try {
+                return await orig.call(this, chatId, searchOptions);
+            } catch(e) {
+                if (!e.message?.includes('waitForChatLoading')) throw e;
+                // Fallback: probeer chat te vinden en berichten direct te lezen
+                const wid = window.Store?.WidFactory?.createWid?.(chatId) || chatId;
+                const chat = window.Store?.Chat?.get(wid) || window.Store?.Chat?.get(chatId);
+                if (!chat) return [];
+                const limit = searchOptions?.limit || 50;
+                const models = chat.msgs?.models || [];
+                return models.slice(-limit).map(m => {
+                    try { return window.WWebJS.parseMessage(m.id?.remote, m); } catch { return null; }
+                }).filter(Boolean);
+            }
+        };
+    }).catch(() => {});
+
     let messages;
     for (let attempt = 0; attempt < 4; attempt++) {
         try {
