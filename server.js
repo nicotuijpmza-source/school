@@ -563,7 +563,10 @@ client.on('ready', () => {
     cron.schedule('0 6 * * *', () => fetchHvaSchedule(), { timezone: 'Europe/Amsterdam' });
     cron.schedule('0 7,12 * * *', () => fetchAndClassifyMails().catch(() => {}), { timezone: 'Europe/Amsterdam' });
     fetchHvaSchedule();
-    fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
+    // Wacht 20s zodat WhatsApp chats volledig gesynchroniseerd zijn
+    setTimeout(() => {
+        fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
+    }, 20000);
 });
 
 client.on('disconnected', () => { waStatus = 'disconnected'; });
@@ -954,7 +957,8 @@ async function fetchRoosterFromKevin() {
             messages = await kevinChat.fetchMessages({ limit: 100 });
             break;
         } catch (e) {
-            if (attempt === 3) throw new Error('WhatsApp kon de berichten niet laden');
+            console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message);
+            if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message}`);
         }
     }
 
