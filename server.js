@@ -954,52 +954,54 @@ async function fetchRoosterFromKevin() {
     if (!kevinId) throw new Error('Geen chat met Kevin gevonden');
     console.log('Kevin chat gevonden:', kevinId);
 
+    // Open Kevin's chat in WhatsApp Web zodat berichten geladen worden
+    await client.pupPage.evaluate(async (chatId) => {
+        try {
+            // Probeer chat te openen via interne WhatsApp routing
+            const ChatStore = window.Store?.Chat;
+            if (!ChatStore) return;
+            let chat = ChatStore.get(chatId);
+            if (!chat) {
+                // Zoek op gebruikersnummer
+                const num = chatId.split('@')[0];
+                chat = ChatStore.getModels?.().find(m => m.id?.user === num || m.id?._serialized?.includes(num));
+            }
+            if (chat) {
+                // Open de chat om berichten te laden
+                const OpenChat = window.Store?.OpenChat;
+                if (OpenChat?.action) OpenChat.action(chat, null);
+            }
+        } catch(e) {}
+    }, kevinId);
+
+    // Wacht tot berichten geladen zijn
+    await new Promise(r => setTimeout(r, 5000));
+
     let messages;
     for (let attempt = 0; attempt < 4; attempt++) {
         try {
             if (attempt > 0) await new Promise(r => setTimeout(r, 15000));
 
-            // Probeer eerst de normale weg
-            try {
-                const kevinChat = await client.getChatById(kevinId);
-                messages = await kevinChat.fetchMessages({ limit: 100 });
-                break;
-            } catch (e1) {
-                console.log('fetchMessages mislukt, fallback via store:', e1.message);
-            }
-
-            // Fallback: haal message IDs op via de interne WhatsApp store
-            const storeResult = await client.pupPage.evaluate((chatId, limit) => {
+            // Haal berichten op via de interne store (na opening geladen)
+            const msgIds = await client.pupPage.evaluate((chatId, limit) => {
                 const Store = window.Store?.Chat;
-                if (!Store) return { error: 'Store niet beschikbaar', ids: [] };
-                // Probeer direct ophalen
-                let chat = Store.get(chatId);
-                // Fallback: zoek op nummer zonder @lid/@c.us suffix
-                if (!chat) {
-                    const num = chatId.split('@')[0];
-                    chat = Store.getModels?.().find(m =>
-                        m.id?._serialized?.startsWith(num) || m.id?.user === num
-                    );
-                }
-                if (!chat) {
-                    const allIds = Store.getModels?.().slice(0, 10).map(m => m.id?._serialized) || [];
-                    return { error: 'Chat niet gevonden', allIds };
-                }
-                const models = chat.msgs?.models || [];
-                return { ids: models.slice(-limit).map(m => m.id?._serialized).filter(Boolean) };
+                if (!Store) return [];
+                const num = chatId.split('@')[0];
+                const chat = Store.get(chatId) ||
+                    Store.getModels?.().find(m => m.id?.user === num || m.id?._serialized?.includes(num));
+                if (!chat) return [];
+                return (chat.msgs?.models || []).slice(-limit).map(m => m.id?._serialized).filter(Boolean);
             }, kevinId, 100);
 
-            console.log('Store resultaat:', JSON.stringify(storeResult));
-            const msgIds = storeResult.ids || [];
-            if (!msgIds.length) throw new Error('Geen berichten gevonden in store');
             console.log(`Store: ${msgIds.length} berichten gevonden`);
+            if (!msgIds.length) throw new Error('Geen berichten in store — chat nog niet geladen');
 
             messages = [];
             for (const id of msgIds) {
                 try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch {}
             }
             if (messages.length) break;
-            throw new Error('Kon geen berichten ophalen via store');
+            throw new Error('getMessageById leverde geen resultaten');
         } catch (e) {
             console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message);
             if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message}`);
