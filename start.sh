@@ -1,5 +1,8 @@
 #!/bin/sh
-echo "Opruimen Chromium locks..."
-find /app/.wwebjs_auth \( -name "SingletonLock" -o -name "SingletonSocket" -o -name "SingletonCookieService" \) | xargs -r rm -f
-echo "Locks verwijderd, server starten..."
+echo "Lock bestanden verwijderen..."
+find /app/.wwebjs_auth -name "Singleton*" -exec rm -f {} \; 2>/dev/null
+find /app/.wwebjs_auth -name "lockfile" -exec rm -f {} \; 2>/dev/null
+find /app/.wwebjs_auth -name "*.lock" -exec rm -f {} \; 2>/dev/null
+echo "Klaar"
+echo "Server starten..."
 exec node server.js

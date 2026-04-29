@@ -478,9 +478,11 @@ function parseScheduleData() {
 
 // Verwijder Chromium lock-bestanden zodat herstart na crash werkt
 try {
-    require('child_process').execSync(
-        `find "${path.join(__dirname, '.wwebjs_auth')}" -name "Singleton*" -delete 2>/dev/null || true`
-    );
+    const { execSync } = require('child_process');
+    const authDir = path.join(__dirname, '.wwebjs_auth');
+    execSync(`find "${authDir}" -name "Singleton*" -exec rm -f {} \\; 2>/dev/null || true`);
+    execSync(`find "${authDir}" -name "lockfile" -exec rm -f {} \\; 2>/dev/null || true`);
+    execSync(`find "${authDir}" -name "*.lock" -exec rm -f {} \\; 2>/dev/null || true`);
 } catch {}
 
 const client = new Client({
