@@ -958,10 +958,33 @@ async function fetchRoosterFromKevin() {
     for (let attempt = 0; attempt < 4; attempt++) {
         try {
             if (attempt > 0) await new Promise(r => setTimeout(r, 15000));
-            // getChatById laadt het chat-model opnieuw zodat fetchMessages werkt
-            const kevinChat = await client.getChatById(kevinId);
-            messages = await kevinChat.fetchMessages({ limit: 100 });
-            break;
+
+            // Probeer eerst de normale weg
+            try {
+                const kevinChat = await client.getChatById(kevinId);
+                messages = await kevinChat.fetchMessages({ limit: 100 });
+                break;
+            } catch (e1) {
+                console.log('fetchMessages mislukt, fallback via store:', e1.message);
+            }
+
+            // Fallback: haal message IDs op via de interne WhatsApp store
+            const msgIds = await client.pupPage.evaluate((chatId, limit) => {
+                const chat = window.Store?.Chat?.get(chatId);
+                if (!chat) return [];
+                const models = chat.msgs?.models || [];
+                return models.slice(-limit).map(m => m.id?._serialized).filter(Boolean);
+            }, kevinId, 100);
+
+            if (!msgIds.length) throw new Error('Geen berichten gevonden in store');
+            console.log(`Store: ${msgIds.length} berichten gevonden`);
+
+            messages = [];
+            for (const id of msgIds) {
+                try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch {}
+            }
+            if (messages.length) break;
+            throw new Error('Kon geen berichten ophalen via store');
         } catch (e) {
             console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message);
             if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message}`);
