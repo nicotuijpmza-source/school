@@ -905,7 +905,7 @@ app.post('/api/schedule/fetch-from-kevin', async (req, res) => {
         for (let attempt = 0; attempt < 4; attempt++) {
             try {
                 if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 3000));
-                messages = await kevinChat.fetchMessages({ limit: 50 });
+                messages = await kevinChat.fetchMessages({ limit: 100 });
                 break;
             } catch (e) {
                 if (attempt === 3) return res.status(500).json({
@@ -914,35 +914,50 @@ app.post('/api/schedule/fetch-from-kevin', async (req, res) => {
             }
         }
 
-        const excelMsgs = messages.filter(m => {
+        const roosterMsgs = messages.filter(m => {
             if (!m.hasMedia) return false;
             const fname = (m._data?.filename || '').toLowerCase();
             const mime = m._data?.mimetype || '';
-            return fname.match(/\.(xlsx|xls|ods)$/) || mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('officedocument');
+            return fname.match(/\.(xlsx|xls|ods|pdf)$/) ||
+                mime.includes('spreadsheet') || mime.includes('excel') ||
+                mime.includes('officedocument') || mime.includes('pdf');
         });
 
-        if (!excelMsgs.length) return res.status(404).json({ error: 'Geen Excel-bestanden gevonden in chat met Kevin (laatste 100 berichten)' });
+        if (!roosterMsgs.length) return res.status(404).json({ error: 'Geen roosterbestanden gevonden in chat met Kevin (laatste 100 berichten)' });
 
-        const lastTwo = excelMsgs.slice(-2);
+        const lastThree = roosterMsgs.slice(-3);
         const rowsets = [];
+        const parsedSchedules = {};
 
-        for (const msg of lastTwo) {
+        for (const msg of lastThree) {
             try {
                 const media = await msg.downloadMedia();
                 if (!media) continue;
                 const buffer = Buffer.from(media.data, 'base64');
-                const rows = parseExcelRows(buffer);
-                const filename = msg._data?.filename || `rooster_${new Date(msg.timestamp * 1000).toLocaleDateString('nl-NL')}.xlsx`;
-                rowsets.push({ rows, filename, date: msg.timestamp * 1000 });
+                const fname = (msg._data?.filename || '').toLowerCase();
+                const mime = msg._data?.mimetype || '';
+                const isPDF = fname.endsWith('.pdf') || mime.includes('pdf');
+                const filename = msg._data?.filename || `rooster_${new Date(msg.timestamp * 1000).toLocaleDateString('nl-NL')}`;
+
+                if (isPDF) {
+                    const parsed = await parsePDFSchedule(buffer);
+                    if (parsed) Object.assign(parsedSchedules, parsed);
+                    console.log(`✅ PDF verwerkt: ${filename}`);
+                } else {
+                    const rows = parseExcelRows(buffer);
+                    rowsets.push({ rows, filename, date: msg.timestamp * 1000 });
+                    console.log(`✅ Excel verwerkt: ${filename}`);
+                }
             } catch (e) {
-                console.error('Download fout:', e.message);
+                console.error('Download/parse fout:', e.message);
             }
         }
 
-        if (!rowsets.length) return res.status(500).json({ error: 'Kon bestanden niet downloaden' });
+        if (!rowsets.length && !Object.keys(parsedSchedules).length) return res.status(500).json({ error: 'Kon bestanden niet downloaden of verwerken' });
 
-        saveSchedule({ rowsets, updatedAt: new Date().toISOString() });
-        res.json({ ok: true, count: rowsets.length, files: rowsets.map(r => r.filename) });
+        const existing = loadSchedule() || {};
+        saveSchedule({ ...existing, rowsets, parsedSchedules: { ...(existing.parsedSchedules || {}), ...parsedSchedules }, updatedAt: new Date().toISOString() });
+        res.json({ ok: true, count: lastThree.length, files: lastThree.map(m => m._data?.filename || 'onbekend') });
 
     } catch (e) {
         console.error(e);
