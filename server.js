@@ -1030,31 +1030,6 @@ async function fetchRoosterFromKevin() {
             }
             if (messages.length) break;
             throw new Error('getMessageById leverde geen resultaten');
-
-            // Fallback: zoek via Msg store op alle bekende IDs
-            const msgIds = await client.pupPage.evaluate((ids, limit) => {
-                const MsgStore = window.Store?.Msg;
-                if (!MsgStore) return [];
-                const result = [];
-                for (const model of (MsgStore.getModels?.() || [])) {
-                    const chatId = model.id?.remote?._serialized || model.id?.remote;
-                    if (ids.some(id => chatId === id || String(chatId).includes(id.split('@')[0]))) {
-                        const serialized = model.id?._serialized;
-                        if (serialized) result.push(serialized);
-                    }
-                }
-                return result.slice(-limit);
-            }, kevinIds, 100);
-
-            console.log(`Msg store: ${msgIds.length} berichten gevonden`);
-            if (!msgIds.length) throw new Error('Geen berichten gevonden');
-
-            messages = [];
-            for (const id of msgIds) {
-                try { const m = await client.getMessageById(id); if (m) messages.push(m); } catch {}
-            }
-            if (messages.length) break;
-            throw new Error('getMessageById leverde geen resultaten');
         } catch (e) {
             console.error(`Berichten ophalen poging ${attempt + 1} mislukt:`, e.message.split('\n')[0]);
             if (attempt === 3) throw new Error(`WhatsApp kon de berichten niet laden: ${e.message.split('\n')[0]}`);
