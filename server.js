@@ -497,16 +497,15 @@ function clearWaSession() {
 async function initWhatsApp() {
     console.log('WhatsApp client starten...');
 
-    // Verwijder bestaande Chrome processen voor een schone start
     try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
 
-    // Timeout: als na 3 minuten geen enkel event vuurt, sessie wissen en opnieuw proberen
+    // Timeout: na 8 minuten Chrome herstarten maar sessie BEWAREN (alleen auth_failure wist sessie)
     const initTimeout = setTimeout(async () => {
-        console.error('WhatsApp init timeout — opnieuw starten');
+        console.error('WhatsApp init timeout — Chrome herstarten zonder sessie te wissen');
         try { await client.destroy(); } catch {}
-        clearWaSession();
-        setTimeout(() => initWhatsApp(), 3000);
-    }, 180000);
+        try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
+        setTimeout(() => initWhatsApp(), 5000);
+    }, 480000);
 
     client.once('qr', () => clearTimeout(initTimeout));
     client.once('ready', () => clearTimeout(initTimeout));
@@ -518,7 +517,7 @@ async function initWhatsApp() {
         clearTimeout(initTimeout);
         console.error('WhatsApp initialize fout:', e.message);
         try { await client.destroy(); } catch {}
-        clearWaSession();
+        try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
         setTimeout(() => initWhatsApp(), 5000);
     }
 }
