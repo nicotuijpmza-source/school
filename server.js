@@ -489,7 +489,14 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process'
+        ]
     }
 });
 
@@ -497,6 +504,18 @@ client.on('qr', (qr) => {
     waQR = qr;
     waStatus = 'qr';
     qrcode.generate(qr, { small: true });
+    console.log('QR code klaar om te scannen via /api/qr');
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('WhatsApp auth mislukt:', msg);
+    waStatus = 'disconnected';
+    waQR = null;
+    // Verwijder corrupte sessie en herstart
+    try {
+        require('child_process').execSync(`rm -rf "${path.join(__dirname, '.wwebjs_auth')}/session-default" 2>/dev/null || true`);
+    } catch {}
+    setTimeout(() => client.initialize(), 3000);
 });
 
 client.on('ready', () => {
