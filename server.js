@@ -499,9 +499,12 @@ async function initWhatsApp() {
 
     try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
 
-    // Timeout: na 8 minuten Chrome herstarten maar sessie BEWAREN (alleen auth_failure wist sessie)
+    // Nieuwe client aanmaken bij elke (her)start — WWebJS ondersteunt geen hergebruik na destroy()
+    client = createClient();
+
+    // Timeout: na 8 minuten nieuwe client starten maar sessie BEWAREN (alleen auth_failure wist sessie)
     const initTimeout = setTimeout(async () => {
-        console.error('WhatsApp init timeout — Chrome herstarten zonder sessie te wissen');
+        console.error('WhatsApp init timeout — nieuwe client zonder sessie te wissen');
         try { await client.destroy(); } catch {}
         try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
         setTimeout(() => initWhatsApp(), 5000);
@@ -522,53 +525,60 @@ async function initWhatsApp() {
     }
 }
 
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-zygote',
-            '--disable-extensions',
-            '--no-first-run'
-        ]
-    }
-});
+let client = createClient();
 
-client.on('qr', (qr) => {
-    waQR = qr;
-    waStatus = 'qr';
-    qrcode.generate(qr, { small: true });
-    console.log('QR code klaar om te scannen via /api/qr');
-});
+function createClient() {
+    const c = new Client({
+        authStrategy: new LocalAuth(),
+        puppeteer: {
+            executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--disable-extensions',
+                '--no-first-run'
+            ]
+        }
+    });
 
-client.on('auth_failure', (msg) => {
-    console.error('WhatsApp auth mislukt:', msg);
-    waStatus = 'disconnected';
-    waQR = null;
-    clearWaSession();
-    setTimeout(() => initWhatsApp(), 3000);
-});
+    c.on('qr', (qr) => {
+        waQR = qr;
+        waStatus = 'qr';
+        qrcode.generate(qr, { small: true });
+        console.log('QR code klaar om te scannen via /api/qr');
+    });
 
-client.on('ready', () => {
-    waStatus = 'connected';
-    waQR = null;
-    console.log('WhatsApp verbonden!');
+    c.on('auth_failure', (msg) => {
+        console.error('WhatsApp auth mislukt:', msg);
+        waStatus = 'disconnected';
+        waQR = null;
+        clearWaSession();
+        setTimeout(() => initWhatsApp(), 3000);
+    });
 
-    cron.schedule('0 18 * * *', () => sendDailySummary(), { timezone: 'Europe/Amsterdam' });
-    cron.schedule('0 6 * * *', () => fetchHvaSchedule(), { timezone: 'Europe/Amsterdam' });
-    cron.schedule('0 7,12 * * *', () => fetchAndClassifyMails().catch(() => {}), { timezone: 'Europe/Amsterdam' });
-    fetchHvaSchedule();
-    // Wacht 60s zodat WhatsApp chats volledig gesynchroniseerd zijn
-    setTimeout(() => {
-        fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
-    }, 60000);
-});
+    c.on('ready', () => {
+        waStatus = 'connected';
+        waQR = null;
+        console.log('WhatsApp verbonden!');
 
-client.on('disconnected', () => { waStatus = 'disconnected'; });
+        cron.schedule('0 18 * * *', () => sendDailySummary(), { timezone: 'Europe/Amsterdam' });
+        cron.schedule('0 6 * * *', () => fetchHvaSchedule(), { timezone: 'Europe/Amsterdam' });
+        cron.schedule('0 7,12 * * *', () => fetchAndClassifyMails().catch(() => {}), { timezone: 'Europe/Amsterdam' });
+        fetchHvaSchedule();
+        setTimeout(() => {
+            fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
+        }, 60000);
+    });
+
+    c.on('disconnected', () => { waStatus = 'disconnected'; });
+    c.on('message_create', onMessageCreate);
+    c.on('message', onMessage);
+
+    return c;
+}
 
 async function sendDailySummary() {
     const stored = loadMessages();
@@ -692,8 +702,7 @@ async function handleExcelFromKevin(msg) {
     }
 }
 
-client.on('message_create', async (msg) => {
-    // Store incoming group messages for summaries
+async function onMessageCreate(msg) {
     if (!msg.fromMe && msg.from.includes('@g.us') && msg.body) {
         try {
             const chat = await msg.getChat();
@@ -714,9 +723,9 @@ client.on('message_create', async (msg) => {
     if (!isRooster) return;
     const saved = await handleExcelFromKevin(msg);
     if (saved) console.log('✅ Rooster ontvangen via eigen bericht');
-});
+}
 
-client.on('message', async (msg) => {
+async function onMessage(msg) {
     if (msg.from === 'status@broadcast') return;
 
     const contact = await msg.getContact();
@@ -772,7 +781,7 @@ client.on('message', async (msg) => {
     } catch (e) {
         console.error('WhatsApp Claude fout:', e.message);
     }
-});
+}
 
 // ─── API routes ─────────────────────────────────────────────────────────────
 
