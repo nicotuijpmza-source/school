@@ -507,7 +507,8 @@ client.on('ready', () => {
     cron.schedule('0 18 * * *', () => sendDailySummary(), { timezone: 'Europe/Amsterdam' });
     cron.schedule('0 6 * * *', () => fetchHvaSchedule(), { timezone: 'Europe/Amsterdam' });
     cron.schedule('0 7,12 * * *', () => fetchAndClassifyMails().catch(() => {}), { timezone: 'Europe/Amsterdam' });
-    fetchHvaSchedule(); // fetch on startup
+    fetchHvaSchedule();
+    fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
 });
 
 client.on('disconnected', () => { waStatus = 'disconnected'; });
@@ -876,89 +877,84 @@ app.post('/api/schedule/request-from-kevin', async (req, res) => {
     }
 });
 
+async function fetchRoosterFromKevin() {
+    const chats = await getChatsWithRetry();
+    const privateChats = chats.filter(c => !c.isGroup);
+
+    let kevinChat = null;
+    for (const chat of privateChats) {
+        try {
+            const contact = await chat.getContact();
+            const name = (contact.name || contact.pushname || chat.name || '').toLowerCase();
+            if (name.includes('kevin')) { kevinChat = chat; break; }
+        } catch {}
+    }
+    if (!kevinChat) kevinChat = privateChats.find(c => (c.name || '').toLowerCase().includes('kevin')) || null;
+    if (!kevinChat) throw new Error('Geen chat met Kevin gevonden');
+
+    let messages;
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 3000));
+            messages = await kevinChat.fetchMessages({ limit: 100 });
+            break;
+        } catch (e) {
+            if (attempt === 3) throw new Error('WhatsApp kon de berichten niet laden');
+        }
+    }
+
+    const roosterMsgs = messages.filter(m => {
+        if (!m.hasMedia) return false;
+        const fname = (m._data?.filename || '').toLowerCase();
+        const mime = m._data?.mimetype || '';
+        return fname.match(/\.(xlsx|xls|ods|pdf)$/) ||
+            mime.includes('spreadsheet') || mime.includes('excel') ||
+            mime.includes('officedocument') || mime.includes('pdf');
+    });
+
+    if (!roosterMsgs.length) throw new Error('Geen roosterbestanden gevonden in chat met Kevin');
+
+    const lastThree = roosterMsgs.slice(-3);
+    const rowsets = [];
+    const parsedSchedules = {};
+
+    for (const msg of lastThree) {
+        try {
+            const media = await msg.downloadMedia();
+            if (!media) continue;
+            const buffer = Buffer.from(media.data, 'base64');
+            const fname = (msg._data?.filename || '').toLowerCase();
+            const mime = msg._data?.mimetype || '';
+            const isPDF = fname.endsWith('.pdf') || mime.includes('pdf');
+            const filename = msg._data?.filename || `rooster_${new Date(msg.timestamp * 1000).toLocaleDateString('nl-NL')}`;
+
+            if (isPDF) {
+                const parsed = await parsePDFSchedule(buffer);
+                if (parsed) Object.assign(parsedSchedules, parsed);
+                console.log(`✅ PDF verwerkt: ${filename}`);
+            } else {
+                const rows = parseExcelRows(buffer);
+                rowsets.push({ rows, filename, date: msg.timestamp * 1000 });
+                console.log(`✅ Excel verwerkt: ${filename}`);
+            }
+        } catch (e) {
+            console.error('Download/parse fout:', e.message);
+        }
+    }
+
+    if (!rowsets.length && !Object.keys(parsedSchedules).length) throw new Error('Kon bestanden niet downloaden of verwerken');
+
+    const existing = loadSchedule() || {};
+    saveSchedule({ ...existing, rowsets, parsedSchedules: { ...(existing.parsedSchedules || {}), ...parsedSchedules }, updatedAt: new Date().toISOString() });
+    console.log(`✅ Roosters opgehaald van Kevin: ${lastThree.length} bestand(en)`);
+    return { count: lastThree.length, files: lastThree.map(m => m._data?.filename || 'onbekend') };
+}
+
 app.post('/api/schedule/fetch-from-kevin', async (req, res) => {
     if (waStatus !== 'connected') return res.status(503).json({ error: 'WhatsApp niet verbonden' });
     try {
-        const chats = await getChatsWithRetry();
-        const privateChats = chats.filter(c => !c.isGroup);
-
-        let kevinChat = null;
-        for (const chat of privateChats) {
-            try {
-                const contact = await chat.getContact();
-                const name = (contact.name || contact.pushname || chat.name || '').toLowerCase();
-                if (name.includes('kevin')) { kevinChat = chat; break; }
-            } catch { /* skip chats that fail contact lookup */ }
-        }
-
-        // Fallback: match on chat name directly
-        if (!kevinChat) {
-            kevinChat = privateChats.find(c => (c.name || '').toLowerCase().includes('kevin')) || null;
-        }
-
-        if (!kevinChat) {
-            const names = privateChats.slice(0, 10).map(c => c.name).join(', ');
-            return res.status(404).json({ error: `Geen chat met Kevin gevonden. Gevonden chats: ${names}` });
-        }
-
-        let messages;
-        for (let attempt = 0; attempt < 4; attempt++) {
-            try {
-                if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 3000));
-                messages = await kevinChat.fetchMessages({ limit: 100 });
-                break;
-            } catch (e) {
-                if (attempt === 3) return res.status(500).json({
-                    error: `WhatsApp kon de berichten niet laden. Stuur het rooster opnieuw via WhatsApp of upload het bestand handmatig.`
-                });
-            }
-        }
-
-        const roosterMsgs = messages.filter(m => {
-            if (!m.hasMedia) return false;
-            const fname = (m._data?.filename || '').toLowerCase();
-            const mime = m._data?.mimetype || '';
-            return fname.match(/\.(xlsx|xls|ods|pdf)$/) ||
-                mime.includes('spreadsheet') || mime.includes('excel') ||
-                mime.includes('officedocument') || mime.includes('pdf');
-        });
-
-        if (!roosterMsgs.length) return res.status(404).json({ error: 'Geen roosterbestanden gevonden in chat met Kevin (laatste 100 berichten)' });
-
-        const lastThree = roosterMsgs.slice(-3);
-        const rowsets = [];
-        const parsedSchedules = {};
-
-        for (const msg of lastThree) {
-            try {
-                const media = await msg.downloadMedia();
-                if (!media) continue;
-                const buffer = Buffer.from(media.data, 'base64');
-                const fname = (msg._data?.filename || '').toLowerCase();
-                const mime = msg._data?.mimetype || '';
-                const isPDF = fname.endsWith('.pdf') || mime.includes('pdf');
-                const filename = msg._data?.filename || `rooster_${new Date(msg.timestamp * 1000).toLocaleDateString('nl-NL')}`;
-
-                if (isPDF) {
-                    const parsed = await parsePDFSchedule(buffer);
-                    if (parsed) Object.assign(parsedSchedules, parsed);
-                    console.log(`✅ PDF verwerkt: ${filename}`);
-                } else {
-                    const rows = parseExcelRows(buffer);
-                    rowsets.push({ rows, filename, date: msg.timestamp * 1000 });
-                    console.log(`✅ Excel verwerkt: ${filename}`);
-                }
-            } catch (e) {
-                console.error('Download/parse fout:', e.message);
-            }
-        }
-
-        if (!rowsets.length && !Object.keys(parsedSchedules).length) return res.status(500).json({ error: 'Kon bestanden niet downloaden of verwerken' });
-
-        const existing = loadSchedule() || {};
-        saveSchedule({ ...existing, rowsets, parsedSchedules: { ...(existing.parsedSchedules || {}), ...parsedSchedules }, updatedAt: new Date().toISOString() });
-        res.json({ ok: true, count: lastThree.length, files: lastThree.map(m => m._data?.filename || 'onbekend') });
-
+        const result = await fetchRoosterFromKevin();
+        res.json({ ok: true, ...result });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: e.message });
