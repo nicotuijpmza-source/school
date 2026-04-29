@@ -486,20 +486,24 @@ try {
 } catch {}
 
 const WWEBJS_AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
+const { execSync } = require('child_process');
 
 function clearWaSession() {
-    try {
-        require('child_process').execSync(`rm -rf "${WWEBJS_AUTH_DIR}/session-default" 2>/dev/null || true`);
-        console.log('WhatsApp sessie gewist');
-    } catch {}
+    try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
+    try { execSync(`rm -rf "${WWEBJS_AUTH_DIR}/session" 2>/dev/null || true`); } catch {}
+    console.log('WhatsApp sessie en Chrome processen gewist');
 }
 
-function initWhatsApp() {
+async function initWhatsApp() {
     console.log('WhatsApp client starten...');
 
+    // Verwijder bestaande Chrome processen voor een schone start
+    try { execSync(`pkill -f chromium 2>/dev/null; pkill -f chrome 2>/dev/null; true`); } catch {}
+
     // Timeout: als na 90s geen enkel event vuurt, sessie wissen en opnieuw proberen
-    const initTimeout = setTimeout(() => {
-        console.error('WhatsApp init timeout — sessie wissen en opnieuw starten');
+    const initTimeout = setTimeout(async () => {
+        console.error('WhatsApp init timeout — opnieuw starten');
+        try { await client.destroy(); } catch {}
         clearWaSession();
         setTimeout(() => initWhatsApp(), 3000);
     }, 90000);
@@ -508,12 +512,15 @@ function initWhatsApp() {
     client.once('ready', () => clearTimeout(initTimeout));
     client.once('auth_failure', () => clearTimeout(initTimeout));
 
-    client.initialize().catch(e => {
+    try {
+        await client.initialize();
+    } catch(e) {
         clearTimeout(initTimeout);
         console.error('WhatsApp initialize fout:', e.message);
+        try { await client.destroy(); } catch {}
         clearWaSession();
         setTimeout(() => initWhatsApp(), 5000);
-    });
+    }
 }
 
 const client = new Client({
