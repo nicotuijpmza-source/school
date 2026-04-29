@@ -969,13 +969,28 @@ async function fetchRoosterFromKevin() {
             }
 
             // Fallback: haal message IDs op via de interne WhatsApp store
-            const msgIds = await client.pupPage.evaluate((chatId, limit) => {
-                const chat = window.Store?.Chat?.get(chatId);
-                if (!chat) return [];
+            const storeResult = await client.pupPage.evaluate((chatId, limit) => {
+                const Store = window.Store?.Chat;
+                if (!Store) return { error: 'Store niet beschikbaar', ids: [] };
+                // Probeer direct ophalen
+                let chat = Store.get(chatId);
+                // Fallback: zoek op nummer zonder @lid/@c.us suffix
+                if (!chat) {
+                    const num = chatId.split('@')[0];
+                    chat = Store.getModels?.().find(m =>
+                        m.id?._serialized?.startsWith(num) || m.id?.user === num
+                    );
+                }
+                if (!chat) {
+                    const allIds = Store.getModels?.().slice(0, 10).map(m => m.id?._serialized) || [];
+                    return { error: 'Chat niet gevonden', allIds };
+                }
                 const models = chat.msgs?.models || [];
-                return models.slice(-limit).map(m => m.id?._serialized).filter(Boolean);
+                return { ids: models.slice(-limit).map(m => m.id?._serialized).filter(Boolean) };
             }, kevinId, 100);
 
+            console.log('Store resultaat:', JSON.stringify(storeResult));
+            const msgIds = storeResult.ids || [];
             if (!msgIds.length) throw new Error('Geen berichten gevonden in store');
             console.log(`Store: ${msgIds.length} berichten gevonden`);
 
