@@ -65,6 +65,37 @@ function storeGroupMessage(groupName, senderName, body) {
     saveMessages(data);
 }
 
+async function backfillGroupMessages() {
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const chats = await client.getChats();
+    const data = loadMessages();
+
+    for (const groupName of GROUPS) {
+        const chat = chats.find(c => c.name === groupName);
+        if (!chat) { console.log(`[backfill] groep niet gevonden: ${groupName}`); continue; }
+        const messages = await chat.fetchMessages({ limit: 200 });
+        const recent = messages.filter(m => m.timestamp * 1000 > since && m.body);
+
+        if (!data[groupName]) data[groupName] = [];
+        const existing = new Set(data[groupName].map(m => `${m.ts}|${m.sender}|${m.body}`));
+
+        let added = 0;
+        for (const m of recent) {
+            const sender = m._data?.notifyName || m._data?.pushname || 'Onbekend';
+            const ts = m.timestamp * 1000;
+            const key = `${ts}|${sender}|${m.body}`;
+            if (!existing.has(key)) {
+                data[groupName].push({ sender, body: m.body, ts });
+                existing.add(key);
+                added++;
+            }
+        }
+        console.log(`[backfill] ${groupName}: ${added} nieuwe berichten ingeladen`);
+    }
+
+    saveMessages(data);
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function loadSchedule() {
@@ -578,6 +609,7 @@ function createClient() {
         fetchHvaSchedule();
         setTimeout(() => {
             fetchRoosterFromKevin().catch(e => console.error('Rooster ophalen fout:', e.message));
+            backfillGroupMessages().catch(e => console.error('Backfill fout:', e.message));
         }, 60000);
     });
 
