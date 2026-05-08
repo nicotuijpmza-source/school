@@ -785,7 +785,8 @@ async function onMessage(msg) {
         });
         const reply = res.content[0].text;
         waHistories[chatId].push({ role: 'assistant', content: reply });
-        await msg.reply(reply);
+        // Verzenden uitgeschakeld — app mag geen berichten sturen naar anderen
+        console.log(`[geblokkeerd] antwoord niet verstuurd naar ${chatId}: ${reply.slice(0, 60)}`);
     } catch (e) {
         console.error('WhatsApp Claude fout:', e.message);
     }
@@ -964,8 +965,9 @@ app.post('/api/schedule/request-from-kevin', async (req, res) => {
         if (!kevinChat) kevinChat = chats.find(c => !c.isGroup && (c.name || '').toLowerCase().includes('kevin'));
         if (!kevinChat) return res.status(404).json({ error: 'Geen chat met Kevin gevonden' });
 
-        await client.sendMessage(kevinChat.id._serialized, 'Hey Kevin, kun je de laatste roosters nog een keer sturen? 🙏');
-        res.json({ ok: true });
+        // Verzenden uitgeschakeld — app mag geen berichten sturen naar anderen
+        console.log('[geblokkeerd] bericht naar Kevin niet verstuurd');
+        res.json({ ok: false, message: 'Verzenden is uitgeschakeld' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
