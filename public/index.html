@@ -326,6 +326,9 @@
   .fin-card-body { padding: 16px 18px; }
   .chart-wrap { position: relative; height: 220px; }
 
+  .donut-row { display: flex; gap: 16px; align-items: center; }
+  @media (max-width: 640px) { .donut-row { flex-direction: column; align-items: stretch; } .donut-row .chart-wrap { width: 100% !important; height: 200px !important; } }
+
   .cat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .cat-label { font-size: 13px; color: var(--gray-800); flex: 1; }
@@ -438,6 +441,52 @@
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--gray-400); border-radius: 3px; }
+
+  /* ── Mobile ── */
+  @media (max-width: 640px) {
+    header { padding: 0 14px; }
+    .logo span { display: none; }
+
+    .tabs { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 12px 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+    .content { padding: 12px; }
+
+    .week-header { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+    .week-title h2 { font-size: 22px; }
+    .week-nav { width: 100%; }
+    .week-nav button { flex: 1; text-align: center; padding: 8px 6px; font-size: 12px; }
+
+    .calendar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .cal-header { min-width: 560px; }
+    .cal-body { min-width: 560px; }
+
+    .upload-area { padding: 24px 16px; }
+
+    .groups-grid { grid-template-columns: 1fr; }
+
+    .chat-container {
+      height: calc(100dvh - 175px);
+      border-radius: 0;
+      margin: 0 -12px;
+      width: calc(100% + 24px);
+    }
+
+    .fin-hero { flex-direction: column; padding: 20px 18px; gap: 20px; }
+    .fin-hero-right { justify-content: space-around; gap: 0; }
+    .fin-hero-left .total-balance { font-size: 32px; }
+    .fin-row { grid-template-columns: 1fr; }
+
+    .mail-toolbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .mail-from { max-width: 160px; }
+
+    .toast { bottom: 12px; right: 12px; left: 12px; text-align: center; }
+
+    .modal { border-radius: 16px 16px 0 0; position: fixed; bottom: 0; left: 0; right: 0; width: 100% !important; max-height: 88vh; transform: translateY(100%) !important; }
+    .modal-overlay.open .modal { transform: translateY(0) !important; }
+    .modal-overlay { align-items: flex-end; padding: 0; }
+  }
 </style>
 </head>
 <body>
@@ -1179,7 +1228,7 @@ function renderFinance(data) {
       <div class="fin-card">
         <div class="fin-card-head"><h3>📊 Uitgaven per categorie</h3></div>
         <div class="fin-card-body">
-          <div style="display:flex;gap:16px;align-items:center">
+          <div class="donut-row">
             <div class="chart-wrap" style="height:180px;width:180px;flex-shrink:0"><canvas id="donutCanvas"></canvas></div>
             <div style="flex:1" id="catLegend"></div>
           </div>
