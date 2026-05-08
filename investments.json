@@ -1,13 +1,13 @@
 {
   "positions": [
     {
-      "invested": 14.47,
-      "date": "2026-04-29",
-      "snapshotIndex": 7138.7998046875,
+      "invested": 24.77,
+      "date": "2026-05-08",
+      "snapshotIndex": 7384.18017578125,
       "excludedIds": []
     }
   ],
   "deposits": [],
-  "lastIndex": 7138.7998046875,
-  "lastIndexDate": "2026-04-28"
+  "lastIndex": 7384.18017578125,
+  "lastIndexDate": "2026-05-08"
 }
