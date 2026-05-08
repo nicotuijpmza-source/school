@@ -442,6 +442,44 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--gray-400); border-radius: 3px; }
 
+  /* ── Eigen events ── */
+  .custom-card {
+    border-radius: 10px; padding: 8px 12px;
+    color: white; font-size: 12px; margin-top: 4px;
+    display: flex; align-items: flex-start; gap: 6px;
+  }
+  .custom-card .custom-title { font-weight: 600; font-size: 13px; flex: 1; }
+  .custom-card .custom-time  { opacity: .85; margin-top: 2px; }
+
+  .event-form { display: flex; flex-direction: column; gap: 14px; }
+  .event-form label { font-size: 13px; font-weight: 600; color: var(--gray-800); display: block; margin-bottom: 4px; }
+  .event-form input, .event-form textarea, .event-form select {
+    width: 100%; border: 1px solid var(--gray-200); border-radius: 8px;
+    padding: 9px 12px; font-size: 14px; font-family: inherit; outline: none;
+  }
+  .event-form input:focus, .event-form textarea:focus { border-color: var(--green); }
+  .event-form textarea { resize: vertical; min-height: 70px; }
+  .color-row { display: flex; gap: 8px; }
+  .color-swatch {
+    width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; transition: border-color .15s;
+  }
+  .color-swatch.active { border-color: var(--gray-800); }
+  .form-btn { background: var(--green); color: white; border: none; border-radius: 8px; padding: 10px 0; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
+  .form-btn:hover { background: var(--green-dark); }
+
+  .event-list-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--gray-200);
+  }
+  .event-list-item:last-child { border-bottom: none; }
+  .event-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .event-list-info { flex: 1; }
+  .event-list-title { font-size: 13px; font-weight: 500; }
+  .event-list-meta  { font-size: 11px; color: var(--gray-600); margin-top: 1px; }
+  .event-del { background: none; border: none; color: var(--gray-400); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .event-del:hover { color: #c62828; background: #fdecea; }
+
   /* ── Mobile ── */
   @media (max-width: 640px) {
     header { padding: 0 14px; }
@@ -520,6 +558,7 @@
         <button onclick="changeWeek(-1)">&#8592; Vorige</button>
         <button class="btn-today" onclick="goToCurrentWeek()">Vandaag</button>
         <button onclick="changeWeek(1)">Volgende &#8594;</button>
+        <button onclick="openAddEvent()" style="background:var(--green);color:white;border-color:var(--green);font-size:18px;padding:6px 14px">+</button>
       </div>
     </div>
 
@@ -623,6 +662,42 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="addEventOverlay" onclick="closeAddEvent(event)">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h3 id="addEventTitle">Afspraak toevoegen</h3>
+      <button class="modal-close" onclick="closeAddEvent()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="event-form">
+        <div>
+          <label>Titel *</label>
+          <input id="evTitle" placeholder="Bijv. Vergadering, Verjaardag...">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label>Datum *</label>
+            <input id="evDate" type="date">
+          </div>
+          <div>
+            <label>Tijd (optioneel)</label>
+            <input id="evTime" type="time">
+          </div>
+        </div>
+        <div>
+          <label>Omschrijving (optioneel)</label>
+          <textarea id="evDesc" placeholder="Extra info..."></textarea>
+        </div>
+        <div>
+          <label>Kleur</label>
+          <div class="color-row" id="colorRow"></div>
+        </div>
+        <button class="form-btn" onclick="submitAddEvent()">Opslaan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Dutch public holidays
 function easterDate(year) {
@@ -673,6 +748,7 @@ let allWeeks = [];
 let dayData = {};
 let hvaData = {};
 let recurringData = {};
+let customEvents = [];
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -717,15 +793,17 @@ const MONTH_NL = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','n
 
 async function loadSchedule(week) {
   const url = week ? `/api/schedule?week=${week}` : '/api/schedule';
-  const [data, hva, recurring] = await Promise.all([
+  const [data, hva, recurring, events] = await Promise.all([
     fetch(url).then(r => r.json()),
     fetch('/api/hva').then(r => r.json()),
-    fetch('/api/recurring').then(r => r.json())
+    fetch('/api/recurring').then(r => r.json()),
+    fetch('/api/events').then(r => r.json())
   ]);
   currentWeek = data.week;
   allWeeks = data.weeks || [];
   hvaData = hva.events || {};
   recurringData = recurring || {};
+  customEvents = events || [];
   renderCalendar(data);
 }
 
@@ -784,9 +862,14 @@ function renderCalendar(data) {
         <div class="shift-time">${ev.time}</div>
         <div class="shift-badge">${ev.label || ev.title}</div>
       </div>`).join('');
+    const dayCustomEvents = customEvents.filter(e => e.date === d.date);
+    const customHtml = dayCustomEvents.map(ev =>
+      `<div class="custom-card" style="background:${ev.color||'#7b1fa2'}">
+        <div><div class="custom-title">${escHtml(ev.title)}</div>${ev.time ? `<div class="custom-time">${ev.time}</div>` : ''}</div>
+      </div>`).join('');
     return `<div class="cal-col${d.date === today ? ' today' : ''}${isWeekend(d.date) ? ' weekend' : ''}"
       onclick="openDay('${d.date}')">
-      ${shiftHtml}${hvaHtml}${recurringHtml}
+      ${shiftHtml}${hvaHtml}${recurringHtml}${customHtml}
     </div>`;
   }).join('');
 }
@@ -797,10 +880,11 @@ function openDay(date) {
   const holiday = getHolidays(yr)[date] || null;
   const freeEvents = (hvaData[date] || []).filter(ev => ev.type === 'free');
   const vacation = freeEvents.length ? freeEvents[0].title : null;
-  showDayModal(date, d.shift || '', d.color || '#43a047', d.colleagues || [], holiday, vacation);
+  const dayEvs = customEvents.filter(e => e.date === date);
+  showDayModal(date, d.shift || '', d.color || '#43a047', d.colleagues || [], holiday, vacation, dayEvs);
 }
 
-function showDayModal(date, shift, color, colleagues, holiday, vacation) {
+function showDayModal(date, shift, color, colleagues, holiday, vacation, dayEvs = []) {
   const d = new Date(date);
   document.getElementById('modalDate').textContent =
     d.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -824,6 +908,23 @@ function showDayModal(date, shift, color, colleagues, holiday, vacation) {
     : '<div style="color:#757575;font-size:14px">Geen collega\'s gevonden</div>';
   document.getElementById('modalColleagues').innerHTML = cols;
 
+  const evHtml = dayEvs.length
+    ? dayEvs.map(ev => `<div class="event-list-item">
+        <div class="event-dot" style="background:${ev.color||'#7b1fa2'}"></div>
+        <div class="event-list-info">
+          <div class="event-list-title">${escHtml(ev.title)}</div>
+          <div class="event-list-meta">${[ev.time, ev.description].filter(Boolean).join(' · ')}</div>
+        </div>
+        <button class="event-del" onclick="deleteEvent('${ev.id}','${date}')" title="Verwijderen">×</button>
+      </div>`).join('')
+    : '';
+  const evSection = `<div style="margin-top:16px">
+    <h4 style="font-size:13px;font-weight:600;color:#757575;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Afspraken</h4>
+    ${evHtml || '<div style="color:#757575;font-size:14px;margin-bottom:6px">Geen afspraken</div>'}
+    <button onclick="closeModal();openAddEvent('${date}')" style="margin-top:8px;background:none;border:1px dashed var(--gray-400);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--gray-600);cursor:pointer;width:100%">+ Afspraak toevoegen</button>
+  </div>`;
+  document.getElementById('modalColleagues').insertAdjacentHTML('afterend', evSection);
+
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -831,8 +932,6 @@ function closeModal(e) {
   if (!e || e.target === document.getElementById('modalOverlay'))
     document.getElementById('modalOverlay').classList.remove('open');
 }
-
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 async function requestFromKevin() {
   const btn = document.getElementById('kevinBtn');
@@ -1465,6 +1564,71 @@ document.querySelectorAll('.tab').forEach(tab => {
     }
   });
 });
+
+// ── Eigen events ─────────────────────────────────────────────────────────
+const EVENT_COLORS = ['#7b1fa2','#1976d2','#e53935','#f57c00','#00897b','#5c6bc0','#558b2f','#c62828'];
+let selectedColor = EVENT_COLORS[0];
+
+function initColorRow() {
+  document.getElementById('colorRow').innerHTML = EVENT_COLORS.map(c =>
+    `<div class="color-swatch${c === selectedColor ? ' active' : ''}" style="background:${c}" onclick="selectColor('${c}')"></div>`
+  ).join('');
+}
+
+function selectColor(c) {
+  selectedColor = c;
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    el.classList.toggle('active', el.style.background === c || el.style.backgroundColor === c);
+  });
+}
+
+function openAddEvent(date = '') {
+  document.getElementById('addEventTitle').textContent = date ? 'Afspraak toevoegen' : 'Afspraak toevoegen';
+  document.getElementById('evDate').value = date || new Date().toISOString().split('T')[0];
+  document.getElementById('evTitle').value = '';
+  document.getElementById('evTime').value = '';
+  document.getElementById('evDesc').value = '';
+  selectedColor = EVENT_COLORS[0];
+  initColorRow();
+  document.getElementById('addEventOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('evTitle').focus(), 100);
+}
+
+function closeAddEvent(e) {
+  if (!e || e.target === document.getElementById('addEventOverlay'))
+    document.getElementById('addEventOverlay').classList.remove('open');
+}
+
+async function submitAddEvent() {
+  const title = document.getElementById('evTitle').value.trim();
+  const date  = document.getElementById('evDate').value;
+  const time  = document.getElementById('evTime').value;
+  const desc  = document.getElementById('evDesc').value.trim();
+  if (!title || !date) { showToast('❌ Titel en datum zijn verplicht', 'error'); return; }
+  try {
+    const r = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, date, time: time || null, description: desc || null, color: selectedColor })
+    }).then(r => r.json());
+    if (r.error) { showToast('❌ ' + r.error, 'error'); return; }
+    showToast('✅ Afspraak opgeslagen!', 'success');
+    document.getElementById('addEventOverlay').classList.remove('open');
+    await loadSchedule(currentWeek);
+  } catch { showToast('❌ Mislukt', 'error'); }
+}
+
+async function deleteEvent(id, date) {
+  if (!confirm('Afspraak verwijderen?')) return;
+  try {
+    await fetch(`/api/events/${id}`, { method: 'DELETE' });
+    showToast('✅ Verwijderd', 'success');
+    document.getElementById('modalOverlay').classList.remove('open');
+    await loadSchedule(currentWeek);
+  } catch { showToast('❌ Mislukt', 'error'); }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddEvent(); closeModal(); } });
 
 // ── Init ─────────────────────────────────────────────────────────────────
 loadSchedule();

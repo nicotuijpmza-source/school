@@ -35,10 +35,11 @@ const DATA_DIR = process.env.NODE_ENV === 'production'
     : __dirname;
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const SCHEDULE_FILE  = path.join(DATA_DIR, 'schedule.json');
-const SUMMARIES_FILE = path.join(DATA_DIR, 'summaries.json');
-const HVA_FILE       = path.join(DATA_DIR, 'hva.json');
-const MESSAGES_FILE  = path.join(DATA_DIR, 'messages.json');
+const SCHEDULE_FILE      = path.join(DATA_DIR, 'schedule.json');
+const SUMMARIES_FILE     = path.join(DATA_DIR, 'summaries.json');
+const HVA_FILE           = path.join(DATA_DIR, 'hva.json');
+const MESSAGES_FILE      = path.join(DATA_DIR, 'messages.json');
+const CUSTOM_EVENTS_FILE = path.join(DATA_DIR, 'custom_events.json');
 
 let waStatus = 'disconnected';
 let waQR = null;
@@ -828,6 +829,43 @@ async function onMessage(msg) {
 
 app.get('/api/recurring', (req, res) => {
     res.json(generateRecurringDates());
+});
+
+// ─── Eigen agenda-items ───────────────────────────────────────────────────────
+function loadCustomEvents() {
+    if (fs.existsSync(CUSTOM_EVENTS_FILE)) return JSON.parse(fs.readFileSync(CUSTOM_EVENTS_FILE, 'utf8'));
+    return [];
+}
+function saveCustomEvents(d) { fs.writeFileSync(CUSTOM_EVENTS_FILE, JSON.stringify(d, null, 2)); }
+
+app.get('/api/events', (req, res) => {
+    res.json(loadCustomEvents());
+});
+
+app.post('/api/events', (req, res) => {
+    const { title, date, time, description, color } = req.body;
+    if (!title || !date) return res.status(400).json({ error: 'title en date zijn verplicht' });
+    const events = loadCustomEvents();
+    const event = {
+        id: crypto.randomUUID(),
+        title,
+        date,
+        time: time || null,
+        description: description || null,
+        color: color || '#7b1fa2',
+        createdAt: new Date().toISOString()
+    };
+    events.push(event);
+    saveCustomEvents(events);
+    res.json(event);
+});
+
+app.delete('/api/events/:id', (req, res) => {
+    const events = loadCustomEvents();
+    const filtered = events.filter(e => e.id !== req.params.id);
+    if (filtered.length === events.length) return res.status(404).json({ error: 'Niet gevonden' });
+    saveCustomEvents(filtered);
+    res.json({ ok: true });
 });
 
 app.get('/api/hva', (req, res) => {
