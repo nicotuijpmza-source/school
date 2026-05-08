@@ -1331,11 +1331,42 @@ async function fetchBunqData() {
         } catch {}
     }
 
+    // Detect round-ups and update investment tracker
+    updateInvestmentRoundups(allTx);
+
     // Analyse with Claude
     const insights = await analyzeBunqData(accounts, allTx);
     const result = { accounts, transactions: allTx.slice(0, 100), insights, lastFetch: new Date().toISOString() };
     saveBunqCache(result);
     return result;
+}
+
+function isRoundup(t) {
+    return t.type === 'out'
+        && t.counterparty === '?'
+        && (!t.description || !t.description.trim())
+        && Math.abs(t.amount) <= 2.0;
+}
+
+function updateInvestmentRoundups(transactions) {
+    const data = loadInvestments();
+    const snapshotDate = data.positions[0]?.date;
+    if (!snapshotDate) return;
+
+    if (!data.deposits) data.deposits = [];
+    const trackedIds = new Set(data.deposits.map(d => String(d.id)).filter(Boolean));
+
+    const newRoundups = transactions.filter(t =>
+        isRoundup(t) && t.date > snapshotDate && t.id && !trackedIds.has(String(t.id))
+    );
+
+    if (!newRoundups.length) return;
+
+    for (const t of newRoundups) {
+        data.deposits.push({ id: String(t.id), amount: Math.abs(t.amount), date: t.date, source: 'bunq_roundup' });
+    }
+    saveInvestments(data);
+    console.log(`[investments] ${newRoundups.length} nieuwe round-up(s) toegevoegd, totaal: €${data.deposits.reduce((s,d)=>s+d.amount,0).toFixed(2)}`);
 }
 
 async function analyzeBunqData(accounts, transactions) {
