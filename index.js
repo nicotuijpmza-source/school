@@ -127,8 +127,6 @@ client.on('message', async (msg) => {
     const contactName = contact.name || contact.pushname || '';
     const isKevin = contactName.toLowerCase().includes('kevin');
     const isGroup = msg.from.includes('@g.us');
-    const myNumber = client.info.wid._serialized;
-    const isFromMe = msg.from === myNumber || msg.to === myNumber;
 
     // Handle Excel file from Kevin
     if (isKevin && msg.hasMedia) {
@@ -150,6 +148,10 @@ client.on('message', async (msg) => {
 
     // Ignore group messages (only handle personal chats)
     if (isGroup) return;
+
+    // Alleen reageren in de eigen zelfchat (Nico stuurt bericht naar zichzelf)
+    const myNumber = client.info.wid._serialized;
+    if (msg.from !== myNumber) return;
 
     const chatId = msg.from;
     if (!histories[chatId]) histories[chatId] = [];
