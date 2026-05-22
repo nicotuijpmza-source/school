@@ -948,8 +948,7 @@ app.get('/api/schedule', (req, res) => {
     if (!targetWeek) {
         const now = new Date();
         const curWeekStr = `${now.getFullYear()}-W${String(getISOWeek(now)).padStart(2, '0')}`;
-        // Use current week if it has data, else first available
-        targetWeek = weeks.includes(curWeekStr) ? curWeekStr : (weeks[0] || curWeekStr);
+        targetWeek = curWeekStr;
     }
 
     const [yr, wk] = targetWeek.split('-W');
