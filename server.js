@@ -1586,7 +1586,8 @@ app.post('/api/investments/set', (req, res) => {
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
-app.listen(3000, () => console.log('App beschikbaar op http://localhost:3000'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`App beschikbaar op poort ${PORT}`));
 
 // Bunq automatisch koppelen bij startup en elk uur verversen
 async function initBunq() {
