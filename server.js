@@ -41,6 +41,7 @@ const HVA_FILE           = path.join(DATA_DIR, 'hva.json');
 const MESSAGES_FILE      = path.join(DATA_DIR, 'messages.json');
 const CUSTOM_EVENTS_FILE = path.join(DATA_DIR, 'custom_events.json');
 const DEADLINES_FILE     = path.join(DATA_DIR, 'deadlines.json');
+const BUDGET_FILE        = path.join(DATA_DIR, 'budget.json');
 
 let waStatus = 'disconnected';
 let waQR = null;
@@ -829,6 +830,59 @@ async function onMessage(msg) {
 }
 
 // ─── API routes ─────────────────────────────────────────────────────────────
+
+// ─── Weekbudget ───────────────────────────────────────────────────────────────
+
+function loadBudget() {
+    if (fs.existsSync(BUDGET_FILE)) return JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8'));
+    return { weeklyLimit: null };
+}
+function saveBudget(d) { fs.writeFileSync(BUDGET_FILE, JSON.stringify(d, null, 2)); }
+
+function getWeekStart() {
+    const d = new Date();
+    const day = d.getDay(); // 0 = zondag
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+app.get('/api/budget', (req, res) => {
+    const budget = loadBudget();
+    const cache = loadBunqCache();
+    const weekStart = getWeekStart();
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+    let spentThisWeek = 0;
+    const weekTx = [];
+    if (cache?.transactions) {
+        for (const t of cache.transactions) {
+            if (t.type === 'out' && t.date >= weekStartStr && t.date <= weekEndStr) {
+                spentThisWeek += Math.abs(t.amount);
+                weekTx.push(t);
+            }
+        }
+    }
+
+    res.json({
+        weeklyLimit: budget.weeklyLimit,
+        spentThisWeek: Math.round(spentThisWeek * 100) / 100,
+        weekStart: weekStartStr,
+        weekEnd: weekEndStr,
+        weekTransactions: weekTx.slice(0, 20)
+    });
+});
+
+app.post('/api/budget', (req, res) => {
+    const { weeklyLimit } = req.body;
+    if (!weeklyLimit || isNaN(weeklyLimit) || weeklyLimit <= 0)
+        return res.status(400).json({ error: 'weeklyLimit moet een positief getal zijn' });
+    saveBudget({ weeklyLimit: parseFloat(weeklyLimit), updatedAt: new Date().toISOString() });
+    res.json({ ok: true, weeklyLimit: parseFloat(weeklyLimit) });
+});
 
 // ─── Deadline tracker ────────────────────────────────────────────────────────
 
