@@ -444,6 +444,45 @@ header {
   background: var(--gray-100); padding: 14px; border-radius: 8px;
 }
 
+/* ── View toggle (Week / Dag) ── */
+.view-toggle { display: flex; border: 1.5px solid var(--gray-200); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+.view-btn { padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; background: white; border: none; color: var(--gray-600); font-family: inherit; transition: all .15s; }
+.view-btn.active { background: var(--accent); color: white; }
+.view-btn:hover:not(.active) { background: var(--accent-light); color: var(--accent); }
+
+/* ── Conflict indicator ── */
+.conflict-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; background: #fff7ed; color: #b45309; border-radius: 4px; padding: 1px 5px; margin-top: 2px; font-weight: 700; }
+.cal-col.conflict { border-top: 2px solid #f59e0b; }
+
+/* ── Day view ── */
+.day-view { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.day-view-header { background: var(--navy); color: white; padding: 18px 22px; }
+.day-view-header h3 { font-size: 20px; font-weight: 300; text-transform: capitalize; }
+.day-view-header p { font-size: 13px; opacity: .55; margin-top: 3px; }
+.conflict-banner { background: #fff7ed; color: #b45309; padding: 10px 22px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #fed7aa; }
+.day-event { display: flex; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--gray-200); align-items: flex-start; }
+.day-event:last-child { border-bottom: none; }
+.day-event-time { font-size: 12px; font-weight: 600; color: var(--gray-600); min-width: 90px; padding-top: 3px; white-space: nowrap; }
+.day-event-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.day-event-body { flex: 1; }
+.day-event-title { font-size: 14px; font-weight: 600; }
+.day-event-meta { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+.day-empty { text-align: center; padding: 60px 20px; color: var(--gray-600); }
+.day-empty .icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── Nav badge ── */
+.nav-badge {
+  position: absolute; top: 1px; right: 2px; min-width: 16px; height: 16px;
+  background: #ef4444; color: white; border-radius: 8px; font-size: 9px;
+  font-weight: 700; display: flex; align-items: center; justify-content: center;
+  padding: 0 3px; line-height: 1;
+}
+.nav-icon-wrap { position: relative; }
+
+/* ── HvA popup ── */
+.hva-card { cursor: pointer; transition: opacity .12s; }
+.hva-card:hover { opacity: .85; }
+
 /* ── Mail filter bar ── */
 .mail-filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .mail-search {
@@ -612,9 +651,13 @@ header {
         <p id="weekRange">Laden...</p>
       </div>
       <div class="week-nav">
-        <button onclick="changeWeek(-1)">&#8592; Vorige</button>
-        <button class="btn-today" onclick="goToCurrentWeek()">Vandaag</button>
-        <button onclick="changeWeek(1)">Volgende &#8594;</button>
+        <div class="view-toggle">
+          <button class="view-btn active" data-view="week" onclick="switchView('week')">Week</button>
+          <button class="view-btn" data-view="day" onclick="switchView('day')">Dag</button>
+        </div>
+        <button onclick="navigatePrev()">&#8592; Vorige</button>
+        <button class="btn-today" onclick="navigateToday()">Vandaag</button>
+        <button onclick="navigateNext()">Volgende &#8594;</button>
         <button onclick="openAddEvent()" style="background:var(--accent);color:white;border-color:var(--accent);font-size:18px;padding:6px 14px">+</button>
       </div>
     </div>
@@ -842,6 +885,9 @@ let dayData = {};
 let hvaData = {};
 let recurringData = {};
 let customEvents = [];
+let hvaTitleColors = {};
+let viewMode = 'week';
+let selectedDay = new Date().toISOString().split('T')[0];
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -850,7 +896,7 @@ function switchTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'finance' && document.getElementById('financeContent').textContent.includes('Laden')) initFinance();
-  if (name === 'mail'    && document.getElementById('mailContent').textContent.includes('Laden'))    initMail();
+  if (name === 'mail') { updateNavBadge('mail', 0); if (document.getElementById('mailContent').textContent.includes('Laden')) initMail(); }
 }
 
 document.querySelectorAll('.tab, .nav-item').forEach(el => {
@@ -906,6 +952,13 @@ async function loadSchedule(week) {
 
 function renderCalendar(data) {
   const { week, days } = data;
+
+  // Always populate data so day view can use it
+  dayData = {};
+  days.forEach(d => { dayData[d.date] = d; });
+
+  if (viewMode === 'day') { renderDayView(selectedDay); return; }
+
   const [yr, wk] = week.split('-W');
   document.getElementById('weekTitle').textContent = `Week ${parseInt(wk)}`;
   if (days.length) {
@@ -915,8 +968,6 @@ function renderCalendar(data) {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  dayData = {};
-  days.forEach(d => { dayData[d.date] = d; });
 
   const isWeekend = date => { const d = new Date(date); return d.getDay() === 0 || d.getDay() === 6; };
   const holidays = {};
@@ -924,7 +975,7 @@ function renderCalendar(data) {
   years.forEach(y => Object.assign(holidays, getHolidays(parseInt(y))));
 
   const hvaColorPalette = ['#5c6bc0','#00897b','#e53935','#f57c00','#1976d2','#7b1fa2','#558b2f','#0288d1','#6d4c41','#c62828'];
-  const hvaTitleColors = {};
+  hvaTitleColors = {};
   let hvaCI = 0;
   for (const evList of Object.values(hvaData)) {
     for (const ev of evList) {
@@ -956,9 +1007,14 @@ function renderCalendar(data) {
            ${pills}
          </div>`
       : '';
-    const hvaHtml = (hvaData[d.date] || []).map(ev => {
+    const dayHvaEvs = (hvaData[d.date] || []).filter(ev => ev.type !== 'free');
+    const conflict = d.shift && dayHvaEvs.some(ev => {
+      const sr = parseTimeRange(d.shift), hr = parseTimeRange(ev.time);
+      return sr && hr && hr.start < sr.end && hr.end > sr.start;
+    });
+    const hvaHtml = dayHvaEvs.map(ev => {
       const bg = hvaTitleColors[ev.title] || '#5c6bc0';
-      return `<div class="hva-card" style="background:${bg}">
+      return `<div class="hva-card" style="background:${bg}" onclick="event.stopPropagation();openHvaDetail(${JSON.stringify(ev)}, '${bg}')">
         <div class="hva-title">🎓 ${ev.title}</div>
         <div class="hva-meta">${ev.time}${ev.location ? ' · ' + ev.location : ''}</div>
       </div>`;
@@ -973,9 +1029,10 @@ function renderCalendar(data) {
       `<div class="custom-card" style="background:${ev.color||'#7b1fa2'}">
         <div><div class="custom-title">${escHtml(ev.title)}</div>${ev.time ? `<div class="custom-time">${ev.time}</div>` : ''}</div>
       </div>`).join('');
-    return `<div class="cal-col${d.date === today ? ' today' : ''}${isWeekend(d.date) ? ' weekend' : ''}"
-      onclick="openDay('${d.date}')">
-      ${shiftHtml}${hvaHtml}${recurringHtml}${customHtml}
+    const conflictHtml = conflict ? `<div class="conflict-badge">⚠️ Overlap</div>` : '';
+    return `<div class="cal-col${d.date === today ? ' today' : ''}${isWeekend(d.date) ? ' weekend' : ''}${conflict ? ' conflict' : ''}"
+      onclick="selectedDay='${d.date}';openDay('${d.date}')">
+      ${shiftHtml}${hvaHtml}${recurringHtml}${customHtml}${conflictHtml}
     </div>`;
   }).join('');
 }
@@ -1073,6 +1130,112 @@ function getISOWeekJS(d) {
 }
 
 function goToCurrentWeek() { loadSchedule(); }
+
+// ── View toggle ──────────────────────────────────────────────────────────
+function switchView(mode) {
+  viewMode = mode;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+  if (mode === 'day') renderDayView(selectedDay);
+  else loadSchedule(currentWeek);
+}
+
+function navigatePrev() {
+  if (viewMode === 'week') changeWeek(-1);
+  else { const d = new Date(selectedDay); d.setDate(d.getDate()-1); selectedDay = d.toISOString().split('T')[0]; renderDayView(selectedDay); }
+}
+
+function navigateNext() {
+  if (viewMode === 'week') changeWeek(1);
+  else { const d = new Date(selectedDay); d.setDate(d.getDate()+1); selectedDay = d.toISOString().split('T')[0]; renderDayView(selectedDay); }
+}
+
+function navigateToday() {
+  selectedDay = new Date().toISOString().split('T')[0];
+  if (viewMode === 'week') goToCurrentWeek();
+  else renderDayView(selectedDay);
+}
+
+// ── Conflict / time utils ────────────────────────────────────────────────
+function parseTimeRange(s) {
+  const m = String(s||'').match(/(\d{1,2})[:.](\d{2})\s*[-–]\s*(\d{1,2})[:.](\d{2})/);
+  if (!m) return null;
+  return { start: parseInt(m[1])*60+parseInt(m[2]), end: parseInt(m[3])*60+parseInt(m[4]) };
+}
+
+// ── Day view ─────────────────────────────────────────────────────────────
+function renderDayView(date) {
+  selectedDay = date;
+  const d = new Date(date + 'T12:00:00');
+  const dateLabel = d.toLocaleDateString('nl-NL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const dayD = dayData[date] || {};
+  const allHvaEvs = hvaData[date] || [];
+  const freeEvs = allHvaEvs.filter(ev => ev.type === 'free');
+  const hvaEvs = allHvaEvs.filter(ev => ev.type !== 'free');
+  const recEvs = recurringData[date] || [];
+  const custEvs = customEvents.filter(e => e.date === date);
+  const holidays = getHolidays(d.getFullYear());
+  const holiday = holidays[date];
+
+  const events = [];
+  if (holiday) events.push({ time:'Hele dag', title:holiday, icon:'🎉', dotColor:'#be185d', meta:'Nationale feestdag', allDay:true });
+  if (freeEvs.length) events.push({ time:'Hele dag', title:freeEvs[0].title, icon:'🏖️', dotColor:'#1976d2', meta:'HvA vrij', allDay:true });
+  if (dayD.shift) {
+    const colleagues = (dayD.colleagues||[]).map(c=>c.name.split(' ')[0]).join(', ');
+    events.push({ time:dayD.shift, title:'Werkdienst', icon:'💼', dotColor:dayD.color||'#43a047', meta:colleagues||'Geen collega\'s' });
+  }
+  hvaEvs.forEach(ev => events.push({ time:ev.time, title:ev.title, icon:'🎓', dotColor:hvaTitleColors[ev.title]||'#5c6bc0', meta:ev.location||'' }));
+  recEvs.forEach(ev => events.push({ time:ev.time, title:ev.label||ev.title, icon:'🔁', dotColor:shiftColor(ev.time), meta:'Terugkerend' }));
+  custEvs.forEach(ev => events.push({ time:ev.time||'Hele dag', title:ev.title, icon:'📌', dotColor:ev.color||'#7b1fa2', meta:ev.description||'' }));
+
+  events.sort((a,b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    const ta = parseTimeRange(a.time), tb = parseTimeRange(b.time);
+    if (!ta && !tb) return 0; if (!ta) return 1; if (!tb) return -1;
+    return ta.start - tb.start;
+  });
+
+  const conflict = dayD.shift && hvaEvs.some(ev => {
+    const sr = parseTimeRange(dayD.shift), hr = parseTimeRange(ev.time);
+    return sr && hr && hr.start < sr.end && hr.end > sr.start;
+  });
+
+  const evHtml = events.length
+    ? events.map(ev => `<div class="day-event">
+        <div class="day-event-time">${ev.time||'—'}</div>
+        <div class="day-event-dot" style="background:${ev.dotColor}"></div>
+        <div class="day-event-body">
+          <div class="day-event-title">${ev.icon} ${escHtml(ev.title)}</div>
+          ${ev.meta ? `<div class="day-event-meta">${escHtml(ev.meta)}</div>` : ''}
+        </div>
+      </div>`).join('')
+    : `<div class="day-empty"><div class="icon">😴</div><div>Geen afspraken op deze dag</div></div>`;
+
+  document.getElementById('calendar').innerHTML = `
+    <div class="day-view">
+      <div class="day-view-header">
+        <h3>${dateLabel}</h3>
+        <p>${events.length} ${events.length===1?'afspraak':'afspraken'}</p>
+      </div>
+      ${conflict ? '<div class="conflict-banner">⚠️ Werkdienst overlapt met een HvA-les op deze dag</div>' : ''}
+      ${evHtml}
+    </div>`;
+}
+
+// ── HvA lesson detail ────────────────────────────────────────────────────
+function openHvaDetail(ev, color) {
+  const start = parseTimeRange(ev.time);
+  const durationMin = start ? start.end - start.start : null;
+  document.getElementById('mailModalTitle').textContent = ev.title;
+  document.getElementById('mailModalBody').innerHTML = `
+    <div style="background:${color};border-radius:12px;padding:18px 20px;color:white;margin-bottom:16px">
+      <div style="font-size:22px;font-weight:600">🎓 ${escHtml(ev.title)}</div>
+      ${ev.time ? `<div style="margin-top:6px;opacity:.85;font-size:14px">🕐 ${ev.time}${durationMin ? ' ('+durationMin+' min)' : ''}</div>` : ''}
+      ${ev.location ? `<div style="margin-top:3px;opacity:.85;font-size:14px">📍 ${escHtml(ev.location)}</div>` : ''}
+    </div>
+    ${ev.description ? `<div style="font-size:14px;line-height:1.7;color:var(--gray-800)">${escHtml(ev.description)}</div>` : '<div style="color:var(--gray-600);font-size:14px">Geen extra informatie beschikbaar</div>'}`;
+  document.getElementById('mailModalOverlay').classList.add('open');
+}
 
 // ── Upload ────────────────────────────────────────────────────────────────
 const uploadArea = document.getElementById('uploadArea');
@@ -1867,10 +2030,32 @@ async function deleteEvent(id, date) {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddEvent(); closeModal(); } });
 
+// ── Nav badges ───────────────────────────────────────────────────────────
+function updateNavBadge(tab, count) {
+  const item = document.querySelector(`.nav-item[data-tab="${tab}"] .nav-icon-wrap`);
+  if (!item) return;
+  let badge = item.querySelector('.nav-badge');
+  if (count > 0) {
+    if (!badge) { badge = document.createElement('div'); badge.className = 'nav-badge'; item.appendChild(badge); }
+    badge.textContent = count > 99 ? '99+' : count;
+  } else if (badge) badge.remove();
+}
+
+async function refreshNavBadges() {
+  try {
+    const cache = await fetch('/api/gmail/mails').then(r => r.json());
+    const mails = cache.mails || [];
+    const urgent = mails.filter(m => m.priority === 'urgent' && !m.isRead).length;
+    updateNavBadge('mail', urgent);
+  } catch {}
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────
 loadSchedule();
 loadSummaries();
 setTimeout(checkForRowPicker, 1000);
+setTimeout(refreshNavBadges, 2000);
+setInterval(refreshNavBadges, 60000);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
