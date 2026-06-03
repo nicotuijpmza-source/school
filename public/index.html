@@ -959,6 +959,12 @@ function renderCalendar(data) {
 
   if (viewMode === 'day') { renderDayView(selectedDay); return; }
 
+  // Restore week structure in case day view replaced it
+  if (!document.getElementById('calHeader')) {
+    document.getElementById('calendar').innerHTML =
+      '<div class="cal-header" id="calHeader"></div><div class="cal-body" id="calBody"></div>';
+  }
+
   const [yr, wk] = week.split('-W');
   document.getElementById('weekTitle').textContent = `Week ${parseInt(wk)}`;
   if (days.length) {
