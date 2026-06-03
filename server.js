@@ -263,7 +263,9 @@ Output: JSON array met exact ${mails.length} objecten in dezelfde volgorde als d
 
     return mails.map((m, i) => {
         const c = classifications.find(c => c.index === i) || {};
-        return { ...m, priority: c.priority || 'info', summary: c.summary || m.snippet, action: c.action || null, deadline: c.deadline || null, needsReply: !!c.needsReply };
+        let priority = c.priority || 'info';
+        if ((c.action || c.needsReply) && priority === 'info') priority = 'waiting';
+        return { ...m, priority, summary: c.summary || m.snippet, action: c.action || null, deadline: c.deadline || null, needsReply: !!c.needsReply };
     });
 }
 
@@ -962,7 +964,17 @@ app.get('/api/schedule', (req, res) => {
 });
 
 app.get('/api/summaries', (req, res) => {
-    res.json(loadSummaries());
+    const summaries = loadSummaries();
+    const stored = loadMessages();
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const recentMessages = {};
+    for (const g of GROUPS) {
+        recentMessages[g] = (stored[g] || [])
+            .filter(m => m.ts > since)
+            .slice(-3)
+            .map(m => ({ sender: m.sender, body: m.body, ts: m.ts }));
+    }
+    res.json({ ...summaries, recentMessages });
 });
 
 app.post('/api/summaries/refresh', async (req, res) => {
@@ -970,10 +982,11 @@ app.post('/api/summaries/refresh', async (req, res) => {
     try {
         const stored = loadMessages();
         const since = Date.now() - 24 * 60 * 60 * 1000;
-        const summaryData = { groups: {}, lastUpdated: new Date().toISOString() };
+        const summaryData = { groups: {}, groupsUpdated: {}, lastUpdated: new Date().toISOString() };
 
         for (const groupName of GROUPS) {
             const recent = (stored[groupName] || []).filter(m => m.ts > since);
+            summaryData.groupsUpdated[groupName] = new Date().toISOString();
             if (!recent.length) { summaryData.groups[groupName] = 'Geen nieuwe berichten vandaag.'; continue; }
 
             const msgText = recent.map(m => `${m.sender}: ${m.body}`).join('\n');
@@ -1214,21 +1227,59 @@ app.post('/api/chat', async (req, res) => {
     webChatHistory.push({ role: 'user', content: message });
     if (webChatHistory.length > 30) webChatHistory.splice(0, webChatHistory.length - 30);
 
+    // Schedule context
     const schedule = parseScheduleData();
     const scheduleContext = Object.keys(schedule).length
         ? `\n\nWerkrooster van Nico:\n${JSON.stringify(schedule, null, 2)}\nVandaag: ${new Date().toLocaleDateString('nl-NL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
-        : '';
+        : `\n\nVandaag: ${new Date().toLocaleDateString('nl-NL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
 
-    const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: `Je bent de persoonlijke assistent van Nico. Spreek altijd Nederlands. Wees kort en vriendelijk.${scheduleContext}`,
-        messages: webChatHistory
-    });
+    // Mail context
+    let mailContext = '';
+    try {
+        const mailCache = loadMailCache();
+        const actionMails = (mailCache.mails || []).filter(m => m.action || m.priority === 'urgent');
+        if (actionMails.length) {
+            mailContext = `\n\nOpenstaande mailacties (${actionMails.length}):\n` +
+                actionMails.slice(0, 5).map(m => `- ${m.subject}: ${m.action || m.summary}`).join('\n');
+        }
+    } catch {}
 
-    const reply = response.content[0].text;
-    webChatHistory.push({ role: 'assistant', content: reply });
-    res.json({ reply });
+    // Finance context
+    let financeContext = '';
+    try {
+        const bunqCache = loadBunqCache();
+        if (bunqCache?.accounts?.length) {
+            const main = bunqCache.accounts.find(a => /hoofd/i.test(a.description)) || bunqCache.accounts[0];
+            financeContext = `\n\nBunq saldo: €${(main.balance || 0).toFixed(2)}`;
+        }
+    } catch {}
+
+    const systemPrompt = `Je bent de persoonlijke assistent van Nico. Spreek altijd Nederlands. Wees kort en vriendelijk.${scheduleContext}${mailContext}${financeContext}`;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    let fullReply = '';
+    try {
+        const stream = anthropic.messages.stream({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: webChatHistory
+        });
+        stream.on('text', text => {
+            fullReply += text;
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        });
+        await stream.finalMessage();
+        webChatHistory.push({ role: 'assistant', content: fullReply });
+    } catch (e) {
+        res.write(`data: ${JSON.stringify({ text: 'Er ging iets mis. Probeer het opnieuw.' })}\n\n`);
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
 });
 
 // ─── Bunq ────────────────────────────────────────────────────────────────────

@@ -269,6 +269,12 @@ header {
 }
 .send-btn:hover { background: var(--accent-2); }
 .send-btn:disabled { background: var(--gray-400); cursor: default; }
+.chat-suggestion {
+  background: var(--accent-light); color: var(--accent-2); border: 1.5px solid #c7d8ff;
+  border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap;
+}
+.chat-suggestion:hover { background: var(--accent); color: white; border-color: var(--accent); }
 .typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
 .typing span { width: 7px; height: 7px; background: var(--gray-400); border-radius: 50%; animation: bounce .9s infinite; }
 .typing span:nth-child(2) { animation-delay: .15s; }
@@ -437,6 +443,38 @@ header {
   white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto;
   background: var(--gray-100); padding: 14px; border-radius: 8px;
 }
+
+/* ── Mail filter bar ── */
+.mail-filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.mail-search {
+  flex: 1; min-width: 180px; border: 1.5px solid var(--gray-200); border-radius: 24px;
+  padding: 8px 16px; font-size: 13px; outline: none; font-family: inherit; background: white;
+}
+.mail-search:focus { border-color: var(--accent); }
+.mail-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.mail-chip {
+  padding: 5px 14px; border-radius: 20px; border: 1.5px solid var(--gray-200);
+  background: white; font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: all .15s; color: var(--gray-600);
+}
+.mail-chip:hover { border-color: var(--accent); color: var(--accent); }
+.mail-chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* ── Category detail panel ── */
+.cat-detail-panel {
+  background: white; border-radius: var(--radius); box-shadow: var(--shadow);
+  margin-bottom: 20px; overflow: hidden;
+}
+.cat-detail-head {
+  padding: 14px 18px; border-bottom: 1px solid var(--gray-200);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.cat-detail-head h3 { font-size: 14px; font-weight: 600; }
+.cat-detail-close {
+  background: none; border: none; font-size: 20px; cursor: pointer;
+  color: var(--gray-600); line-height: 1; padding: 2px 6px; border-radius: 6px;
+}
+.cat-detail-close:hover { background: var(--gray-100); }
 
 /* ── Upload btn (used in JS) ── */
 .upload-btn {
@@ -614,8 +652,14 @@ header {
       <div class="chat-header">🤖 Persoonlijke assistent</div>
       <div class="chat-messages" id="chatMessages">
         <div class="msg assistant">
-          <div class="msg-bubble">Hallo Nico! Ik kan je helpen met je werkrooster en andere vragen. Wat wil je weten?</div>
+          <div class="msg-bubble">Hallo Nico! Ik heb toegang tot je rooster, openstaande mailacties en saldo. Wat wil je weten?</div>
           <div class="msg-time">nu</div>
+        </div>
+        <div id="chatSuggestions" style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0;align-self:flex-start">
+          <button class="chat-suggestion" onclick="sendSuggestion('Wat staat er vandaag op mijn rooster?')">📅 Rooster vandaag</button>
+          <button class="chat-suggestion" onclick="sendSuggestion('Wat zijn mijn openstaande mailacties?')">📧 Mailacties</button>
+          <button class="chat-suggestion" onclick="sendSuggestion('Hoe staat mijn saldo er voor?')">💰 Saldo</button>
+          <button class="chat-suggestion" onclick="sendSuggestion('Wat staat er deze week op mijn schema?')">📋 Week overzicht</button>
         </div>
       </div>
       <div class="chat-input-area">
@@ -879,6 +923,17 @@ function renderCalendar(data) {
   const years = [...new Set(days.map(d => d.date.slice(0,4)))];
   years.forEach(y => Object.assign(holidays, getHolidays(parseInt(y))));
 
+  const hvaColorPalette = ['#5c6bc0','#00897b','#e53935','#f57c00','#1976d2','#7b1fa2','#558b2f','#0288d1','#6d4c41','#c62828'];
+  const hvaTitleColors = {};
+  let hvaCI = 0;
+  for (const evList of Object.values(hvaData)) {
+    for (const ev of evList) {
+      if (ev.title && !hvaTitleColors[ev.title]) {
+        hvaTitleColors[ev.title] = hvaColorPalette[hvaCI++ % hvaColorPalette.length];
+      }
+    }
+  }
+
   document.getElementById('calHeader').innerHTML = days.map(d => {
     const holiday = holidays[d.date];
     const freeEvents = (hvaData[d.date] || []).filter(ev => ev.type === 'free');
@@ -901,11 +956,13 @@ function renderCalendar(data) {
            ${pills}
          </div>`
       : '';
-    const hvaHtml = (hvaData[d.date] || []).map(ev =>
-      `<div class="hva-card">
+    const hvaHtml = (hvaData[d.date] || []).map(ev => {
+      const bg = hvaTitleColors[ev.title] || '#5c6bc0';
+      return `<div class="hva-card" style="background:${bg}">
         <div class="hva-title">🎓 ${ev.title}</div>
         <div class="hva-meta">${ev.time}${ev.location ? ' · ' + ev.location : ''}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     const recurringHtml = (recurringData[d.date] || []).map(ev =>
       `<div class="shift-card" style="background:${shiftColor(ev.time)}">
         <div class="shift-time">${ev.time}</div>
@@ -1041,8 +1098,33 @@ async function doUpload(file) {
 
 // ── Summaries ────────────────────────────────────────────────────────────
 async function loadSummaries() {
+  showGroupSkeleton();
   const data = await fetch('/api/summaries').then(r => r.json());
+  const isEmpty = !data.lastUpdated || Object.keys(data.groups || {}).length === 0;
+  const isOld = data.lastUpdated && (Date.now() - new Date(data.lastUpdated)) > 2 * 60 * 60 * 1000;
+  if (isEmpty || isOld) {
+    try {
+      const wa = await fetch('/api/status').then(r => r.json());
+      if (wa.status === 'connected') {
+        const r = await fetch('/api/summaries/refresh', { method: 'POST' }).then(r => r.json());
+        if (!r.error) { renderSummaries(r); return; }
+      }
+    } catch {}
+  }
   renderSummaries(data);
+}
+
+function showGroupSkeleton() {
+  const grid = document.getElementById('groupsGrid');
+  grid.innerHTML = ['Out en nieuw','Le pompadour','De Petjes'].map(() => `
+    <div class="group-card" style="opacity:.6">
+      <div class="group-card-header" style="background:var(--gray-400)">
+        <div style="background:rgba(255,255,255,.3);border-radius:6px;height:16px;width:120px"></div>
+      </div>
+      <div class="group-card-body">
+        ${[80,60,70].map(w => `<div style="background:var(--gray-200);border-radius:4px;height:12px;width:${w}%;margin-bottom:8px"></div>`).join('')}
+      </div>
+    </div>`).join('');
 }
 
 function renderSummaries(data) {
@@ -1057,15 +1139,33 @@ function renderSummaries(data) {
 
   grid.innerHTML = groups.map(name => {
     const text = data.groups?.[name] || null;
-    const bodyHtml = text
-      ? formatSummary(text)
-      : '<p class="empty-state">Nog geen samenvatting beschikbaar. Klik op Vernieuwen.</p>';
+    const updatedAt = data.groupsUpdated?.[name];
+    const recent = (data.recentMessages?.[name] || []);
+
+    const summaryHtml = text
+      ? `<div style="margin-bottom:${recent.length?'12px':'0'}">${formatSummary(text)}</div>`
+      : '<p class="empty-state" style="margin-bottom:12px">Samenvatting wordt opgehaald...</p>';
+
+    const recentHtml = recent.length
+      ? `<div style="border-top:1px solid var(--gray-200);padding-top:10px;margin-top:4px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-400);margin-bottom:6px">Laatste berichten</div>
+          ${recent.map(m => `<div style="font-size:12px;line-height:1.5;margin-bottom:4px">
+            <span style="font-weight:600;color:var(--gray-800)">${escHtml(m.sender.split(' ')[0])}</span>
+            <span style="color:var(--gray-600)">: ${escHtml(m.body.slice(0,80))}${m.body.length>80?'…':''}</span>
+          </div>`).join('')}
+        </div>`
+      : '';
+
+    const updatedHtml = updatedAt
+      ? `<div style="font-size:11px;color:var(--gray-400);margin-top:10px">Samenvatting: ${new Date(updatedAt).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</div>`
+      : '';
+
     return `<div class="group-card">
       <div class="group-card-header">
         <h3>${icons[name] || '💬'} ${name}</h3>
         <button class="refresh-btn" onclick="refreshSummaries()">🔄</button>
       </div>
-      <div class="group-card-body">${bodyHtml}</div>
+      <div class="group-card-body">${summaryHtml}${recentHtml}${updatedHtml}</div>
     </div>`;
   }).join('');
 }
@@ -1097,34 +1197,62 @@ function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
 
+function sendSuggestion(text) {
+  document.getElementById('chatSuggestions')?.remove();
+  document.getElementById('chatInput').value = text;
+  sendChat();
+}
+
 async function sendChat() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
   if (!msg) return;
 
+  document.getElementById('chatSuggestions')?.remove();
   addMsg('user', msg);
   input.value = '';
 
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
 
-  const typingId = 'typing-' + Date.now();
+  // Maak een streamable bubble aan
   const msgs = document.getElementById('chatMessages');
-  msgs.innerHTML += `<div class="msg assistant" id="${typingId}"><div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div></div>`;
+  const bubbleId = 'bubble-' + Date.now();
+  msgs.innerHTML += `<div class="msg assistant" id="${bubbleId}"><div class="msg-bubble"></div><div class="msg-time">${new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</div></div>`;
   msgs.scrollTop = msgs.scrollHeight;
+  const bubble = document.querySelector(`#${bubbleId} .msg-bubble`);
 
   try {
-    const r = await fetch('/api/chat', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: msg })
-    }).then(r => r.json());
+    });
 
-    document.getElementById(typingId)?.remove();
-    addMsg('assistant', r.reply || r.error);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (payload === '[DONE]') break;
+        try {
+          const { text } = JSON.parse(payload);
+          bubble.innerHTML = (bubble.textContent + text).replace(/\n/g, '<br>');
+          msgs.scrollTop = msgs.scrollHeight;
+        } catch {}
+      }
+    }
+    if (!bubble.textContent.trim()) bubble.textContent = 'Er ging iets mis.';
   } catch {
-    document.getElementById(typingId)?.remove();
-    addMsg('assistant', 'Er ging iets mis. Probeer het opnieuw.');
+    bubble.textContent = 'Er ging iets mis. Probeer het opnieuw.';
   }
 
   btn.disabled = false;
@@ -1213,6 +1341,7 @@ async function refreshFinance() {
 }
 
 let donutChart = null, barChart = null;
+let _financeTransactions = [];
 
 function catColor(i) {
   const colors = ['#3d6df5','#16a34a','#f59e0b','#ef4444','#7c3aed','#0891b2','#ea580c','#4f46e5'];
@@ -1324,6 +1453,7 @@ function buildMonthlyBars(transactions) {
 
 function renderFinance(data) {
   const { accounts = [], transactions = [], insights, lastFetch } = data;
+  _financeTransactions = transactions;
   const lastStr = lastFetch ? new Date(lastFetch).toLocaleString('nl-NL') : '—';
 
   const main = accounts.find(a => /hoofd/i.test(a.description)) || accounts.find(a => a.type === 'checking') || accounts[0] || {};
@@ -1372,6 +1502,8 @@ function renderFinance(data) {
       </div>
     </div>
 
+    <div id="catDetailPanel"></div>
+
     <div id="investSection"></div>
 
     ${insights ? `<div class="insights-box"><h3>🧠 AI-analyse</h3><p>${escHtml(insights)}</p></div>` : ''}
@@ -1408,12 +1540,20 @@ function renderFinance(data) {
     const colors = cats.map((_,i) => catColor(i));
     donutChart = new Chart(document.getElementById('donutCanvas'), {
       type: 'doughnut',
-      data: { labels: cats.map(c=>c[0]), datasets: [{ data: cats.map(c=>c[1]), backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
-      options: { cutout: '68%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` €${ctx.parsed.toFixed(2)}` } } } }
+      data: { labels: cats.map(c=>c[0]), datasets: [{ data: cats.map(c=>c[1]), backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverBorderWidth: 3 }] },
+      options: {
+        cutout: '68%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` €${ctx.parsed.toFixed(2)}` } } },
+        onClick: (evt, elements) => {
+          if (elements.length) showCategoryDetail(cats[elements[0].index][0], colors[elements[0].index]);
+        }
+      }
     });
     const maxVal = cats[0][1];
     document.getElementById('catLegend').innerHTML = cats.map((c,i) => `
-      <div class="cat-row">
+      <div class="cat-row" style="cursor:pointer;border-radius:8px;padding:3px 6px;margin:0 -6px;transition:background .12s"
+           onmouseover="this.style.background='var(--gray-100)'" onmouseout="this.style.background=''"
+           onclick="showCategoryDetail(${JSON.stringify(c[0])}, '${colors[i]}')">
         <div class="cat-dot" style="background:${colors[i]}"></div>
         <div class="cat-label">${c[0]}</div>
         <div class="cat-bar-wrap"><div class="cat-bar" style="width:${(c[1]/maxVal*100).toFixed(0)}%;background:${colors[i]}"></div></div>
@@ -1436,8 +1576,54 @@ function renderFinance(data) {
   }
 }
 
+function showCategoryDetail(catName, color) {
+  const panel = document.getElementById('catDetailPanel');
+  if (!panel) return;
+
+  const txs = _financeTransactions.filter(t =>
+    t.type === 'out' && guessCategory(t.counterparty, t.description, t.amount) === catName
+  );
+
+  const totalAmt = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+
+  if (panel.dataset.open === catName) {
+    panel.innerHTML = '';
+    panel.dataset.open = '';
+    return;
+  }
+  panel.dataset.open = catName;
+
+  panel.innerHTML = `
+    <div class="cat-detail-panel">
+      <div class="cat-detail-head">
+        <h3><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle"></span>${catName} — €${totalAmt.toFixed(2)} totaal</h3>
+        <button class="cat-detail-close" onclick="document.getElementById('catDetailPanel').innerHTML='';document.getElementById('catDetailPanel').dataset.open=''">×</button>
+      </div>
+      ${txs.length === 0
+        ? '<div style="padding:20px 18px;color:var(--gray-600);font-style:italic">Geen transacties gevonden</div>'
+        : txs.map(t => {
+            const initials = (t.counterparty||'?').slice(0,2).toUpperCase();
+            const bg = avatarColor(t.counterparty);
+            return `<div class="tx-row">
+              <div class="tx-avatar" style="background:${bg}">${initials}</div>
+              <div class="tx-info">
+                <div class="tx-name">${escHtml(t.counterparty)}</div>
+                <div class="tx-desc">${escHtml(t.description)}</div>
+              </div>
+              <div class="tx-right">
+                <div class="tx-amount out">-€${Math.abs(t.amount).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                <div class="tx-date">${t.date||''}</div>
+              </div>
+            </div>`;
+          }).join('')}
+    </div>`;
+
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 // ── Mail ─────────────────────────────────────────────────────────────────
 let mailData = [];
+let mailFilter = { search: '', priority: 'all' };
 
 async function initMail() {
   const status = await fetch('/api/gmail/status').then(r => r.json());
@@ -1503,6 +1689,43 @@ function renderMailInbox(data) {
       <button class="upload-btn" id="mailRefreshBtn" onclick="refreshMail()" style="padding:7px 14px;font-size:12px">🔄 Vernieuwen</button>
     </div>`;
 
+  mailFilter = { search: '', priority: 'all' };
+
+  document.getElementById('mailContent').innerHTML = `
+    <div class="mail-toolbar">${statsHtml}</div>
+    <div class="mail-filter-bar">
+      <input class="mail-search" id="mailSearch" placeholder="🔍 Zoek op afzender, onderwerp..." oninput="mailFilter.search=this.value;applyMailFilter()">
+      <div class="mail-filter-chips">
+        <button class="mail-chip active" data-p="all" onclick="mailFilter.priority='all';applyMailFilter()">Alles</button>
+        <button class="mail-chip" data-p="urgent" onclick="mailFilter.priority='urgent';applyMailFilter()">🔴 Actie</button>
+        <button class="mail-chip" data-p="waiting" onclick="mailFilter.priority='waiting';applyMailFilter()">🟡 Wacht</button>
+        <button class="mail-chip" data-p="info" onclick="mailFilter.priority='info';applyMailFilter()">⚪ Info</button>
+      </div>
+    </div>
+    <div id="mailSections"></div>`;
+
+  applyMailFilter();
+}
+
+function applyMailFilter() {
+  const q = mailFilter.search.toLowerCase();
+  const p = mailFilter.priority;
+
+  document.querySelectorAll('.mail-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.p === p);
+  });
+
+  let filtered = mailData;
+  if (q) {
+    filtered = filtered.filter(m => {
+      const from    = (m.from || '').toLowerCase();
+      const subject = (m.subject || '').toLowerCase();
+      const summary = (m.summary || m.snippet || '').toLowerCase();
+      return from.includes(q) || subject.includes(q) || summary.includes(q);
+    });
+  }
+  if (p !== 'all') filtered = filtered.filter(m => m.priority === p);
+
   const sectionHtml = (title, items) => {
     if (!items.length) return '';
     return `<div class="mail-section">
@@ -1511,14 +1734,18 @@ function renderMailInbox(data) {
     </div>`;
   };
 
-  document.getElementById('mailContent').innerHTML = `
-    <div class="mail-toolbar">${statsHtml}</div>
-    ${mails.length === 0
-      ? '<div style="text-align:center;padding:60px;color:var(--gray-600)">Geen mails gevonden. Klik op Vernieuwen.</div>'
-      : sectionHtml('🔥 Actie vereist', urgent) +
-        sectionHtml('⏳ Kan wachten', waiting) +
-        sectionHtml('ℹ️ Ter info', info)
-    }`;
+  const urgent  = filtered.filter(m => m.priority === 'urgent');
+  const waiting = filtered.filter(m => m.priority === 'waiting');
+  const info    = filtered.filter(m => m.priority === 'info');
+
+  const sections = document.getElementById('mailSections');
+  if (!sections) return;
+
+  sections.innerHTML = filtered.length === 0
+    ? `<div style="text-align:center;padding:60px;color:var(--gray-600)">${mailData.length === 0 ? 'Geen mails gevonden. Klik op Vernieuwen.' : 'Geen mails gevonden voor deze filter.'}</div>`
+    : sectionHtml('🔥 Actie vereist', urgent) +
+      sectionHtml('⏳ Kan wachten', waiting) +
+      sectionHtml('ℹ️ Ter info', info);
 }
 
 function mailCardHtml(m) {
