@@ -40,6 +40,7 @@ const SUMMARIES_FILE     = path.join(DATA_DIR, 'summaries.json');
 const HVA_FILE           = path.join(DATA_DIR, 'hva.json');
 const MESSAGES_FILE      = path.join(DATA_DIR, 'messages.json');
 const CUSTOM_EVENTS_FILE = path.join(DATA_DIR, 'custom_events.json');
+const DEADLINES_FILE     = path.join(DATA_DIR, 'deadlines.json');
 
 let waStatus = 'disconnected';
 let waQR = null;
@@ -828,6 +829,67 @@ async function onMessage(msg) {
 }
 
 // ─── API routes ─────────────────────────────────────────────────────────────
+
+// ─── Deadline tracker ────────────────────────────────────────────────────────
+
+function loadDeadlines() {
+    if (fs.existsSync(DEADLINES_FILE)) return JSON.parse(fs.readFileSync(DEADLINES_FILE, 'utf8'));
+    return [];
+}
+function saveDeadlines(d) { fs.writeFileSync(DEADLINES_FILE, JSON.stringify(d, null, 2)); }
+
+function cleanupDeadlines() {
+    const deadlines = loadDeadlines();
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const filtered = deadlines.filter(d => !d.completed || new Date(d.completedAt).getTime() > cutoff);
+    if (filtered.length !== deadlines.length) saveDeadlines(filtered);
+    return filtered;
+}
+
+app.get('/api/deadlines', (req, res) => {
+    res.json(cleanupDeadlines());
+});
+
+app.post('/api/deadlines', (req, res) => {
+    const { title, datetime, category, priority, note } = req.body;
+    if (!title || !datetime) return res.status(400).json({ error: 'title en datetime zijn verplicht' });
+    const deadlines = loadDeadlines();
+    const deadline = {
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        datetime,
+        category: category?.trim() || null,
+        priority: priority || 'middel',
+        note: note?.trim() || null,
+        completed: false,
+        completedAt: null,
+        createdAt: new Date().toISOString()
+    };
+    deadlines.push(deadline);
+    saveDeadlines(deadlines);
+    res.json(deadline);
+});
+
+app.put('/api/deadlines/:id', (req, res) => {
+    const deadlines = loadDeadlines();
+    const idx = deadlines.findIndex(d => d.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Niet gevonden' });
+    const updates = req.body;
+    if (updates.completed === true && !deadlines[idx].completedAt) {
+        updates.completedAt = new Date().toISOString();
+    }
+    deadlines[idx] = { ...deadlines[idx], ...updates };
+    saveDeadlines(deadlines);
+    res.json(deadlines[idx]);
+});
+
+app.delete('/api/deadlines/:id', (req, res) => {
+    const deadlines = loadDeadlines();
+    const filtered = deadlines.filter(d => d.id !== req.params.id);
+    if (filtered.length === deadlines.length) return res.status(404).json({ error: 'Niet gevonden' });
+    saveDeadlines(filtered);
+    res.json({ ok: true });
+});
 
 app.get('/api/recurring', (req, res) => {
     res.json(generateRecurringDates());

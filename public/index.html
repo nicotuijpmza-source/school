@@ -444,6 +444,50 @@ header {
   background: var(--gray-100); padding: 14px; border-radius: 8px;
 }
 
+/* ── Deadline tracker ── */
+.dl-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+.dl-header-left h2 { font-size:22px; font-weight:500; }
+.dl-header-left p { font-size:13px; color:var(--gray-600); margin-top:2px; }
+.dl-add-btn { background:var(--accent); color:white; border:none; border-radius:10px; padding:9px 18px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .15s; }
+.dl-add-btn:hover { background:var(--accent-2); }
+.dl-section-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--gray-600); margin-bottom:10px; }
+.dl-card { background:white; border-radius:12px; box-shadow:var(--shadow); margin-bottom:10px; border-left:4px solid var(--gray-200); transition:box-shadow .15s; }
+.dl-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.12); }
+.dl-card.urgent { border-left-color:#ef4444; }
+.dl-card.warning { border-left-color:#f59e0b; }
+.dl-card.overdue { border-left-color:#7f1d1d; background:#fff5f5; }
+.dl-card.completed { border-left-color:#22c55e; opacity:.65; }
+.dl-card-inner { padding:14px 16px; }
+.dl-row1 { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.dl-title-text { font-size:15px; font-weight:600; flex:1; }
+.dl-actions { display:flex; gap:5px; flex-shrink:0; }
+.dl-btn { border:none; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .15s; line-height:1.4; }
+.dl-btn.complete { background:#dcfce7; color:#15803d; }
+.dl-btn.complete:hover { background:#16a34a; color:white; }
+.dl-btn.del { background:#fee2e2; color:#dc2626; }
+.dl-btn.del:hover { background:#dc2626; color:white; }
+.dl-btn.edit { background:var(--accent-light); color:var(--accent-2); }
+.dl-btn.edit:hover { background:var(--accent); color:white; }
+.dl-meta { display:flex; gap:8px; margin-top:7px; flex-wrap:wrap; align-items:center; }
+.dl-time { font-size:12px; color:var(--gray-600); }
+.dl-relative { font-size:12px; font-weight:600; }
+.dl-relative.urgent { color:#dc2626; }
+.dl-relative.warning { color:#b45309; }
+.dl-relative.overdue { color:#7f1d1d; }
+.dl-relative.neutral { color:var(--gray-400); }
+.dl-relative.completed { color:#15803d; }
+.dl-category { font-size:11px; background:var(--accent-light); color:var(--accent-2); padding:2px 8px; border-radius:10px; font-weight:600; }
+.dl-priority { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600; }
+.dl-priority.hoog { background:#fee2e2; color:#dc2626; }
+.dl-priority.middel { background:#fff7ed; color:#b45309; }
+.dl-priority.laag { background:#dcfce7; color:#15803d; }
+.dl-note { font-size:12px; color:var(--gray-600); margin-top:6px; line-height:1.5; border-top:1px solid var(--gray-200); padding-top:6px; }
+.dl-empty { text-align:center; padding:60px 20px; color:var(--gray-600); }
+.dl-empty .icon { font-size:40px; margin-bottom:12px; }
+.dl-done-toggle { background:none; border:none; color:var(--gray-600); font-size:13px; cursor:pointer; font-family:inherit; padding:10px 0; margin-top:8px; display:flex; align-items:center; gap:6px; font-weight:500; }
+.dl-done-toggle:hover { color:var(--gray-800); }
+.dl-tab-badge { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; background:#ef4444; color:white; border-radius:9px; font-size:10px; font-weight:700; padding:0 4px; margin-left:6px; vertical-align:middle; }
+
 /* ── View toggle (Week / Dag) ── */
 .view-toggle { display: flex; border: 1.5px solid var(--gray-200); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
 .view-btn { padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; background: white; border: none; color: var(--gray-600); font-family: inherit; transition: all .15s; }
@@ -635,6 +679,7 @@ header {
 
 <div class="tabs">
   <div class="tab active" data-tab="rooster">📅 Rooster</div>
+  <div class="tab" data-tab="deadlines">⏰ Deadlines<span class="dl-tab-badge" id="dlTabBadge" style="display:none"></span></div>
   <div class="tab" data-tab="groepen">💬 Groepen</div>
   <div class="tab" data-tab="chat">🤖 Assistent</div>
   <div class="tab" data-tab="mail">📧 Mail</div>
@@ -673,6 +718,11 @@ header {
       <div style="font-size:13px;margin-top:4px">Klik of sleep het Excel-bestand van Kevin hierheen — nieuwe roosters van Kevin worden automatisch verwerkt zodra hij ze stuurt</div>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.ods" onchange="uploadFile(this)">
+  </div>
+
+  <!-- ── DEADLINES ── -->
+  <div class="panel" id="panel-deadlines">
+    <div style="text-align:center;padding:60px;color:var(--gray-600)">Laden...</div>
   </div>
 
   <!-- ── GROEPEN ── -->
@@ -735,6 +785,10 @@ header {
       <div class="nav-icon-wrap">📅</div>
       <div class="nav-label">Rooster</div>
     </div>
+    <div class="nav-item" data-tab="deadlines">
+      <div class="nav-icon-wrap">⏰</div>
+      <div class="nav-label">Taken</div>
+    </div>
     <div class="nav-item" data-tab="groepen">
       <div class="nav-icon-wrap">💬</div>
       <div class="nav-label">Groepen</div>
@@ -792,6 +846,47 @@ header {
       <div class="modal-colleagues">
         <h4>Collega's</h4>
         <div id="modalColleagues"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Deadline form modal -->
+<div class="modal-overlay" id="dlFormOverlay" onclick="closeDeadlineForm(event)">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h3 id="dlFormTitle">Deadline toevoegen</h3>
+      <button class="modal-close" onclick="closeDeadlineForm()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="event-form">
+        <div>
+          <label>Titel *</label>
+          <input id="dlTitle" placeholder="Bijv. Tentamen statistiek, Verslag inleveren...">
+        </div>
+        <div>
+          <label>Datum &amp; tijd *</label>
+          <input id="dlDatetime" type="datetime-local">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label>Vak / categorie</label>
+            <input id="dlCategory" placeholder="Bijv. Statistiek">
+          </div>
+          <div>
+            <label>Prioriteit</label>
+            <select id="dlPriority" style="width:100%;border:1.5px solid var(--gray-200);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none">
+              <option value="laag">🟢 Laag</option>
+              <option value="middel" selected>🟡 Middel</option>
+              <option value="hoog">🔴 Hoog</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label>Notitie (optioneel)</label>
+          <textarea id="dlNote" placeholder="Extra info, wat moet je doen..."></textarea>
+        </div>
+        <button class="form-btn" onclick="submitDeadlineForm()">Opslaan</button>
       </div>
     </div>
   </div>
@@ -897,6 +992,7 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'finance' && document.getElementById('financeContent').textContent.includes('Laden')) initFinance();
   if (name === 'mail') { updateNavBadge('mail', 0); if (document.getElementById('mailContent').textContent.includes('Laden')) initMail(); }
+  if (name === 'deadlines') loadDeadlines();
 }
 
 document.querySelectorAll('.tab, .nav-item').forEach(el => {
@@ -2034,7 +2130,163 @@ async function deleteEvent(id, date) {
   } catch { showToast('❌ Mislukt', 'error'); }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddEvent(); closeModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAddEvent(); closeModal(); closeDeadlineForm(); } });
+
+// ── Deadline tracker ─────────────────────────────────────────────────────
+let allDeadlines = [];
+let editingDeadlineId = null;
+
+async function loadDeadlines() {
+  allDeadlines = await fetch('/api/deadlines').then(r => r.json());
+  renderDeadlines();
+  updateDeadlineBadges();
+}
+
+function dlUrgency(datetime, completed) {
+  if (completed) return 'completed';
+  const diff = new Date(datetime) - new Date();
+  if (diff < 0) return 'overdue';
+  if (diff < 24 * 3600 * 1000) return 'urgent';
+  if (diff < 3 * 24 * 3600 * 1000) return 'warning';
+  return 'neutral';
+}
+
+function dlRelTime(isoStr, completed, completedAt) {
+  if (completed) return `Voltooid ${new Date(completedAt).toLocaleDateString('nl-NL', { day:'numeric', month:'short' })}`;
+  const diff = new Date(isoStr) - new Date();
+  const abs = Math.abs(diff);
+  const mins = Math.floor(abs / 60000);
+  const hours = Math.floor(abs / 3600000);
+  const days = Math.floor(abs / 86400000);
+  if (diff < 0) {
+    if (hours < 1) return `${mins} min verlopen`;
+    if (hours < 24) return `${hours} uur verlopen`;
+    return `${days} dag${days !== 1 ? 'en' : ''} verlopen`;
+  }
+  if (hours < 1) return `over ${mins} min`;
+  if (hours < 24) return `over ${hours} uur`;
+  if (days === 1) return 'morgen';
+  return `over ${days} dagen`;
+}
+
+function renderDeadlines() {
+  const panel = document.getElementById('panel-deadlines');
+  if (!panel) return;
+
+  const open = allDeadlines.filter(d => !d.completed).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  const done = allDeadlines.filter(d => d.completed).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+  const openHtml = open.length
+    ? open.map(d => dlCardHtml(d)).join('')
+    : `<div class="dl-empty"><div class="icon">🎉</div><div>Geen openstaande deadlines!</div></div>`;
+
+  const doneHtml = done.length ? `
+    <div style="margin-top:8px">
+      <button class="dl-done-toggle" id="dlDoneToggle" onclick="document.getElementById('dlDoneList').classList.toggle('hidden')">
+        ✅ Voltooid (${done.length}) ▾
+      </button>
+      <div id="dlDoneList">${done.map(d => dlCardHtml(d)).join('')}</div>
+    </div>` : '';
+
+  panel.innerHTML = `
+    <div class="dl-header">
+      <div class="dl-header-left">
+        <h2>Deadlines</h2>
+        <p>${open.length} openstaand${done.length ? ` · ${done.length} voltooid` : ''}</p>
+      </div>
+      <button class="dl-add-btn" onclick="openDeadlineForm()">+ Toevoegen</button>
+    </div>
+    ${openHtml}
+    ${doneHtml}`;
+}
+
+function dlCardHtml(d) {
+  const urg = dlUrgency(d.datetime, d.completed);
+  const rel = dlRelTime(d.datetime, d.completed, d.completedAt);
+  const dt = new Date(d.datetime).toLocaleString('nl-NL', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  const pLabels = { hoog:'🔴 Hoog', middel:'🟡 Middel', laag:'🟢 Laag' };
+  return `<div class="dl-card ${urg}">
+    <div class="dl-card-inner">
+      <div class="dl-row1">
+        <div class="dl-title-text">${escHtml(d.title)}</div>
+        <div class="dl-actions">
+          ${!d.completed ? `<button class="dl-btn edit" onclick="openDeadlineForm('${d.id}')">✏️</button>` : ''}
+          ${!d.completed ? `<button class="dl-btn complete" onclick="completeDeadline('${d.id}')">✓ Klaar</button>` : ''}
+          <button class="dl-btn del" onclick="deleteDeadline('${d.id}')">✕</button>
+        </div>
+      </div>
+      <div class="dl-meta">
+        <span class="dl-time">📅 ${dt}</span>
+        <span class="dl-relative ${urg}">${rel}</span>
+        ${d.category ? `<span class="dl-category">${escHtml(d.category)}</span>` : ''}
+        <span class="dl-priority ${d.priority}">${pLabels[d.priority] || d.priority}</span>
+      </div>
+      ${d.note ? `<div class="dl-note">${escHtml(d.note)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+async function completeDeadline(id) {
+  await fetch(`/api/deadlines/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ completed: true })
+  });
+  await loadDeadlines();
+  showToast('✅ Afgevinkt!', 'success');
+}
+
+async function deleteDeadline(id) {
+  if (!confirm('Deadline verwijderen?')) return;
+  await fetch(`/api/deadlines/${id}`, { method: 'DELETE' });
+  await loadDeadlines();
+  showToast('✅ Verwijderd', 'success');
+}
+
+function updateDeadlineBadges() {
+  const open = allDeadlines.filter(d => !d.completed);
+  const count = open.length;
+  const tabBadge = document.getElementById('dlTabBadge');
+  if (tabBadge) { tabBadge.textContent = count; tabBadge.style.display = count ? 'inline-flex' : 'none'; }
+  updateNavBadge('deadlines', count);
+}
+
+function openDeadlineForm(id = null) {
+  editingDeadlineId = id;
+  const d = id ? allDeadlines.find(x => x.id === id) : null;
+  document.getElementById('dlFormTitle').textContent = d ? 'Deadline bewerken' : 'Deadline toevoegen';
+  document.getElementById('dlTitle').value = d?.title || '';
+  document.getElementById('dlDatetime').value = d ? d.datetime.slice(0, 16) : '';
+  document.getElementById('dlCategory').value = d?.category || '';
+  document.getElementById('dlPriority').value = d?.priority || 'middel';
+  document.getElementById('dlNote').value = d?.note || '';
+  document.getElementById('dlFormOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('dlTitle').focus(), 100);
+}
+
+function closeDeadlineForm(e) {
+  if (!e || e.target === document.getElementById('dlFormOverlay'))
+    document.getElementById('dlFormOverlay').classList.remove('open');
+}
+
+async function submitDeadlineForm() {
+  const title    = document.getElementById('dlTitle').value.trim();
+  const datetime = document.getElementById('dlDatetime').value;
+  const category = document.getElementById('dlCategory').value.trim();
+  const priority = document.getElementById('dlPriority').value;
+  const note     = document.getElementById('dlNote').value.trim();
+  if (!title)    { showToast('❌ Titel is verplicht', 'error'); return; }
+  if (!datetime) { showToast('❌ Datum en tijd zijn verplicht', 'error'); return; }
+  const body = { title, datetime: new Date(datetime).toISOString(), category: category || null, priority, note: note || null };
+  if (editingDeadlineId) {
+    await fetch(`/api/deadlines/${editingDeadlineId}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    showToast('✅ Deadline bijgewerkt!', 'success');
+  } else {
+    await fetch('/api/deadlines', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    showToast('✅ Deadline toegevoegd!', 'success');
+  }
+  document.getElementById('dlFormOverlay').classList.remove('open');
+  await loadDeadlines();
+}
 
 // ── Nav badges ───────────────────────────────────────────────────────────
 function updateNavBadge(tab, count) {
@@ -2059,6 +2311,7 @@ async function refreshNavBadges() {
 // ── Init ─────────────────────────────────────────────────────────────────
 loadSchedule();
 loadSummaries();
+loadDeadlines();
 setTimeout(checkForRowPicker, 1000);
 setTimeout(refreshNavBadges, 2000);
 setInterval(refreshNavBadges, 60000);
