@@ -684,10 +684,12 @@ header {
 
   .content { padding: 12px; }
 
-  .week-header { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
-  .week-title h2 { font-size: 22px; }
-  .week-nav { width: 100%; }
-  .week-nav button { flex: 1; text-align: center; padding: 8px 6px; font-size: 12px; }
+  .week-header { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .week-title h2 { font-size: 17px; }
+  .week-title p  { font-size: 12px; margin-top: 1px; }
+  .week-nav { gap: 5px; flex-wrap: nowrap; }
+  .week-nav button { padding: 6px 8px; font-size: 11px; border-radius: 8px; }
+  .view-btn { padding: 5px 10px; font-size: 11px; }
 
   .calendar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .cal-header { min-width: 560px; }
