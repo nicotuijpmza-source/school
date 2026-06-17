@@ -133,7 +133,7 @@ header {
   transition: background .15s;
 }
 .nav-item.active .nav-icon-wrap { background: rgba(255,255,255,.12); }
-.nav-label { font-size: 10px; font-weight: 600; letter-spacing: .2px; }
+.nav-label { font-size: 10px; font-weight: 600; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; width: 100%; text-align: center; }
 
 /* ── Rooster ── */
 .week-header {
@@ -152,6 +152,15 @@ header {
 .week-nav .btn-today { background: var(--accent); color: white; border-color: var(--accent); }
 .week-nav .btn-today:hover { background: var(--accent-2); }
 
+.calendar-wrap { position: relative; border-radius: var(--radius); }
+.calendar-wrap::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 40px;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,.88));
+  pointer-events: none; border-radius: 0 var(--radius) var(--radius) 0;
+  transition: opacity .2s; opacity: 0;
+}
+.calendar-wrap.can-scroll::after { opacity: 1; }
+.calendar-wrap.at-end::after    { opacity: 0; }
 .calendar { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .cal-header { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 3px solid var(--accent); }
 .cal-day-header { text-align: center; padding: 12px 6px; font-size: 12px; color: var(--gray-600); }
@@ -616,6 +625,16 @@ header {
 .toast.success { background: #16a34a; }
 .toast.error { background: #dc2626; }
 
+/* ── Donut external tooltip ── */
+.donut-tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--gray-800); color: white;
+  border-radius: 8px; padding: 7px 12px;
+  font-size: 13px; white-space: nowrap;
+  transition: opacity .1s; z-index: 10;
+  transform: translate(-50%, -120%);
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -692,7 +711,7 @@ header {
   .mail-toolbar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .mail-from { max-width: 160px; }
 
-  .toast { bottom: 78px; right: 12px; left: 12px; text-align: center; }
+  .toast { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); right: 12px; left: 12px; text-align: center; }
 
   .modal { border-radius: 18px 18px 0 0; position: fixed; bottom: 0; left: 0; right: 0; width: 100% !important; max-height: 88vh; transform: translateY(100%) !important; }
   .modal-overlay.open .modal { transform: translateY(0) !important; }
@@ -743,15 +762,17 @@ header {
       </div>
     </div>
 
-    <div class="calendar" id="calendar">
-      <div class="cal-header" id="calHeader"></div>
-      <div class="cal-body" id="calBody"></div>
+    <div class="calendar-wrap" id="calendarWrap">
+      <div class="calendar" id="calendar">
+        <div class="cal-header" id="calHeader"></div>
+        <div class="cal-body" id="calBody"></div>
+      </div>
     </div>
 
     <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
       <div class="icon">📂</div>
       <div><strong>Rooster uploaden</strong></div>
-      <div style="font-size:13px;margin-top:4px">Klik of sleep het Excel-bestand van Kevin hierheen — nieuwe roosters van Kevin worden automatisch verwerkt zodra hij ze stuurt</div>
+      <div style="font-size:13px;margin-top:4px">Klik of sleep je roosterbestand (.xlsx / .xls / .ods) hierheen — het rooster wordt automatisch verwerkt</div>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.ods" onchange="uploadFile(this)">
   </div>
@@ -1173,6 +1194,7 @@ function renderCalendar(data) {
       ${shiftHtml}${hvaHtml}${recurringHtml}${customHtml}${conflictHtml}
     </div>`;
   }).join('');
+  requestAnimationFrame(initCalendarScrollHint);
 }
 
 function openDay(date) {
@@ -1268,6 +1290,25 @@ function getISOWeekJS(d) {
 }
 
 function goToCurrentWeek() { loadSchedule(); }
+
+// ── Calendar scroll hint ─────────────────────────────────────────────────
+function initCalendarScrollHint() {
+  const cal  = document.getElementById('calendar');
+  const wrap = document.getElementById('calendarWrap');
+  if (!cal || !wrap) return;
+
+  function update() {
+    const scrollable = cal.scrollWidth > cal.clientWidth + 2;
+    const atEnd = cal.scrollLeft + cal.clientWidth >= cal.scrollWidth - 4;
+    wrap.classList.toggle('can-scroll', scrollable && !atEnd);
+    wrap.classList.toggle('at-end', !scrollable || atEnd);
+  }
+
+  cal.removeEventListener('scroll', cal._scrollHint);
+  cal._scrollHint = update;
+  cal.addEventListener('scroll', update, { passive: true });
+  update();
+}
 
 // ── View toggle ──────────────────────────────────────────────────────────
 function switchView(mode) {
@@ -1673,24 +1714,24 @@ async function loadAndRenderInvestments() {
       <div class="fin-card" style="margin-bottom:20px">
         <div class="fin-card-head">
           <h3>📈 S&P 500 Belegging</h3>
-          ${sp ? `<span style="font-size:12px;color:var(--gray-400)">Bijgewerkt: ${sp.date}</span>` : ''}
+          ${sp ? `<span style="font-size:12px;color:var(--gray-400)">Bijgewerkt: ${formatDate(sp.date)}</span>` : ''}
         </div>
         <div class="fin-card-body">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
             <div style="background:var(--gray-100);border-radius:10px;padding:14px">
               <div style="font-size:11px;color:var(--gray-600);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Ingelegd</div>
-              <div style="font-size:22px;font-weight:500;margin-top:4px">€${inv.totalDeposited.toFixed(2)}</div>
+              <div style="font-size:22px;font-weight:500;margin-top:4px">${fmtEur(inv.totalDeposited)}</div>
             </div>
             <div style="background:${isUp?'#dcfce7':'#fee2e2'};border-radius:10px;padding:14px">
               <div style="font-size:11px;color:${isUp?'#15803d':'#dc2626'};font-weight:600;text-transform:uppercase;letter-spacing:.5px">Huidige waarde</div>
-              <div style="font-size:22px;font-weight:500;color:${isUp?'#16a34a':'#dc2626'};margin-top:4px">€${inv.currentValue.toFixed(2)}</div>
-              <div style="font-size:12px;color:${isUp?'#15803d':'#dc2626'};margin-top:2px">${isUp?'▲':'▼'} €${Math.abs(gain).toFixed(2)} (${Math.abs(gainPct).toFixed(2)}%)</div>
+              <div style="font-size:22px;font-weight:500;color:${isUp?'#16a34a':'#dc2626'};margin-top:4px">${fmtEur(inv.currentValue)}</div>
+              <div style="font-size:12px;color:${isUp?'#15803d':'#dc2626'};margin-top:2px">${isUp?'▲':'▼'} ${fmtEur(Math.abs(gain))} (${Math.abs(gainPct).toFixed(2).replace('.',',')}%)</div>
             </div>
             ${sp ? `
             <div style="background:var(--accent-light);border-radius:10px;padding:14px">
               <div style="font-size:11px;color:var(--accent-2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">S&P 500 index</div>
               <div style="font-size:22px;font-weight:500;color:var(--accent-2);margin-top:4px">${sp.price.toLocaleString('nl-NL',{maximumFractionDigits:0})}</div>
-              <div style="font-size:12px;color:${dayUp?'#15803d':'#dc2626'};margin-top:2px">${dayUp?'▲':'▼'} ${Math.abs(sp.dayChange).toFixed(2)}% vandaag</div>
+              <div style="font-size:12px;color:${dayUp?'#15803d':'#dc2626'};margin-top:2px">${dayUp?'▲':'▼'} ${Math.abs(sp.dayChange).toFixed(2).replace('.',',')}% vandaag</div>
             </div>` : ''}
           </div>
           ${recentDeposits.length ? `
@@ -1698,8 +1739,8 @@ async function loadAndRenderInvestments() {
           <div style="display:flex;flex-wrap:wrap;gap:8px">
             ${recentDeposits.map(d => `
               <div style="background:var(--gray-100);border-radius:8px;padding:6px 12px;font-size:12px">
-                <span style="color:var(--gray-600)">${d.date}</span>
-                <span style="font-weight:600;margin-left:6px;color:var(--green)">+€${d.amount.toFixed(2)}</span>
+                <span style="color:var(--gray-600)">${formatDate(d.date)}</span>
+                <span style="font-weight:600;margin-left:6px;color:var(--green)">+${fmtEur(d.amount)}</span>
               </div>`).join('')}
           </div>` : ''}
         </div>
@@ -1715,6 +1756,101 @@ function buildCategories(transactions) {
     map[key] = (map[key] || 0) + Math.abs(t.amount);
   }
   return Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, 7);
+}
+
+const MERCHANT_MAP = [
+  [/railway/i,                          'Railway',             '☁️'],
+  [/dirk van den broek/i,               'Dirk',                '🛒'],
+  [/albert heijn|^ah\b/i,               'Albert Heijn',        '🛒'],
+  [/jumbo/i,                            'Jumbo',               '🛒'],
+  [/lidl/i,                             'Lidl',                '🛒'],
+  [/aldi/i,                             'Aldi',                '🛒'],
+  [/plus supermarkt|^plus\b/i,          'Plus',                '🛒'],
+  [/spar\b/i,                           'Spar',                '🛒'],
+  [/ns groep|ns\.nl|^ns /i,             'NS',                  '🚆'],
+  [/ov-chip|ovchip|ov chip/i,           'OV-Chipkaart',        '🚆'],
+  [/arriva|connexxion|gvb|^ret |^htm /i,'OV',                  '🚆'],
+  [/spotify/i,                          'Spotify',             '🎵'],
+  [/netflix/i,                          'Netflix',             '🎬'],
+  [/disney/i,                           'Disney+',             '🎬'],
+  [/videoland/i,                        'Videoland',           '🎬'],
+  [/apple\.com|apple store/i,           'Apple',               '🍎'],
+  [/steam\b/i,                          'Steam',               '🎮'],
+  [/mcdonalds|mcdonald/i,               "McDonald's",          '🍔'],
+  [/thuisbezorgd/i,                     'Thuisbezorgd',        '🍔'],
+  [/deliveroo/i,                        'Deliveroo',           '🍔'],
+  [/uber eats|ubereats/i,               'Uber Eats',           '🍔'],
+  [/wolt/i,                             'Wolt',                '🍔'],
+  [/dominos|domino's/i,                 "Domino's",            '🍕'],
+  [/starbucks/i,                        'Starbucks',           '☕'],
+  [/subway\b/i,                         'Subway',              '🥪'],
+  [/kfc\b/i,                            'KFC',                 '🍗'],
+  [/shell\b/i,                          'Shell',               '⛽'],
+  [/^bp\b/i,                            'BP',                  '⛽'],
+  [/esso\b/i,                           'Esso',                '⛽'],
+  [/tinq\b|tango\b/i,                   'Tankstation',         '⛽'],
+  [/ideal.*top.*up|ideal.*opwaarder/i,  'iDEAL Opwaardering',  '💳'],
+  [/bunq/i,                             'Bunq',                '🏦'],
+  [/^ing\b/i,                           'ING',                 '🏦'],
+  [/rabobank/i,                         'Rabobank',            '🏦'],
+  [/abn amro/i,                         'ABN AMRO',            '🏦'],
+  [/belastingdienst/i,                  'Belastingdienst',     '🏛️'],
+  [/zara\b/i,                           'Zara',                '👕'],
+  [/h&m\b/i,                            'H&M',                 '👕'],
+  [/primark/i,                          'Primark',             '👕'],
+  [/uniqlo/i,                           'Uniqlo',              '👕'],
+  [/nike\b/i,                           'Nike',                '👟'],
+  [/adidas/i,                           'Adidas',              '👟'],
+  [/ziggo/i,                            'Ziggo',               '📡'],
+  [/^kpn\b/i,                           'KPN',                 '📡'],
+  [/odido/i,                            'Odido',               '📡'],
+  [/uber\b/i,                           'Uber',                '🚗'],
+  [/bolt\b/i,                           'Bolt',                '🚗'],
+  [/apotheek/i,                         'Apotheek',            '💊'],
+  [/tandarts/i,                         'Tandarts',            '🦷'],
+  [/gym|fitness|sportschool/i,          'Sportschool',         '💪'],
+  [/salaris|loon\b/i,                   'Salaris',             '💼'],
+  [/huur\b|rent\b/i,                    'Huur',                '🏠'],
+  [/paradiso|melkweg|bitterzoet/i,      'Uitgaan',             '🎉'],
+  [/amazon/i,                           'Amazon',              '📦'],
+  [/bol\.com/i,                         'Bol.com',             '📦'],
+  [/coolblue/i,                         'Coolblue',            '📦'],
+  [/ikea/i,                             'IKEA',                '🪑'],
+];
+
+const CAT_ICONS = {
+  '🛒 Boodschappen': '🛒', '🚆 Vervoer': '🚆', '🎉 Uitgaan': '🎉',
+  '🍔 Eten': '🍔',         '🎮 Abonnementen': '🎮', '👕 Kleding': '👕',
+  '⛽ Brandstof': '⛽',   '💪 Sport': '💪',  '🏥 Zorg': '🏥',
+  '🏠 Wonen': '🏠',        '💼 Inkomen': '💼', '💹 Beleggen': '💹',
+  '📦 Overig': '💳',
+};
+
+function toTitleCase(s) {
+  return s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+function enrichTransaction(counterparty, description) {
+  const cp = (counterparty || '').trim();
+  const ds = (description  || '').trim();
+
+  if (!cp && !ds) {
+    return { displayName: 'Onbekende transactie', icon: '❓', iconBg: '#9ca3af' };
+  }
+
+  for (const [pattern, name, icon] of MERCHANT_MAP) {
+    if (pattern.test(cp) || pattern.test(ds)) {
+      return { displayName: name, icon, iconBg: null };
+    }
+  }
+
+  if (!cp || cp === '?') {
+    return { displayName: ds || 'Onbekende transactie', icon: '❓', iconBg: '#9ca3af' };
+  }
+
+  const display = cp === cp.toUpperCase() && cp.length > 3 ? toTitleCase(cp) : cp;
+  const cat = guessCategory(cp, ds, 0);
+  return { displayName: display, icon: CAT_ICONS[cat] || '💳', iconBg: null };
 }
 
 function guessCategory(name, desc, amount) {
@@ -1750,6 +1886,26 @@ function buildMonthlyBars(transactions) {
     income: keys.map(k => months[k].in),
     expenses: keys.map(k => months[k].out),
   };
+}
+
+function donutTooltipHandler(context) {
+  const { chart, tooltip } = context;
+  const wrap = chart.canvas.parentNode;
+  let el = wrap.querySelector('.donut-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'donut-tooltip';
+    wrap.style.position = 'relative';
+    wrap.appendChild(el);
+  }
+  if (tooltip.opacity === 0) { el.style.opacity = '0'; return; }
+  const dp = tooltip.dataPoints?.[0];
+  if (!dp) return;
+  el.textContent = dp.label + ': ' + fmtEur(dp.parsed);
+  const { offsetLeft: ox, offsetTop: oy } = chart.canvas;
+  el.style.opacity = '1';
+  el.style.left = (ox + tooltip.caretX) + 'px';
+  el.style.top  = (oy + tooltip.caretY) + 'px';
 }
 
 function renderFinance(data) {
@@ -1816,17 +1972,17 @@ function renderFinance(data) {
         <span style="font-size:12px;color:var(--gray-400)">${transactions.length} transacties</span>
       </div>
       ${transactions.slice(0,40).map(t => {
-        const initials = (t.counterparty||'?').slice(0,2).toUpperCase();
-        const color = avatarColor(t.counterparty);
+        const en = enrichTransaction(t.counterparty, t.description);
+        const color = en.iconBg || avatarColor(en.displayName);
         return `<div class="tx-row">
-          <div class="tx-avatar" style="background:${color}">${initials}</div>
+          <div class="tx-avatar" style="background:${color};font-size:18px">${en.icon}</div>
           <div class="tx-info">
-            <div class="tx-name">${escHtml(t.counterparty)}</div>
-            <div class="tx-desc">${escHtml(t.description)}</div>
+            <div class="tx-name">${escHtml(en.displayName)}</div>
+            <div class="tx-desc">${escHtml(t.description || t.counterparty || '')}</div>
           </div>
           <div class="tx-right">
             <div class="tx-amount ${t.type}">${t.type==='out'?'-':'+'}€${Math.abs(t.amount).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-            <div class="tx-date">${t.date||''}</div>
+            <div class="tx-date">${formatDate(t.date)}</div>
           </div>
         </div>`;
       }).join('')}
@@ -1846,7 +2002,7 @@ function renderFinance(data) {
       data: { labels: cats.map(c=>c[0]), datasets: [{ data: cats.map(c=>c[1]), backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverBorderWidth: 3 }] },
       options: {
         cutout: '68%',
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` €${ctx.parsed.toFixed(2)}` } } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false, external: donutTooltipHandler } },
         onClick: (evt, elements) => {
           if (elements.length) showCategoryDetail(cats[elements[0].index][0], colors[elements[0].index]);
         }
@@ -1860,7 +2016,7 @@ function renderFinance(data) {
         <div class="cat-dot" style="background:${colors[i]}"></div>
         <div class="cat-label">${c[0]}</div>
         <div class="cat-bar-wrap"><div class="cat-bar" style="width:${(c[1]/maxVal*100).toFixed(0)}%;background:${colors[i]}"></div></div>
-        <div class="cat-amount">€${c[1].toFixed(0)}</div>
+        <div class="cat-amount">${fmtEur(c[1])}</div>
       </div>`).join('');
   }
 
@@ -1899,23 +2055,23 @@ function showCategoryDetail(catName, color) {
   panel.innerHTML = `
     <div class="cat-detail-panel">
       <div class="cat-detail-head">
-        <h3><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle"></span>${catName} — €${totalAmt.toFixed(2)} totaal</h3>
+        <h3><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:8px;vertical-align:middle"></span>${catName} — ${fmtEur(totalAmt)} totaal</h3>
         <button class="cat-detail-close" onclick="document.getElementById('catDetailPanel').innerHTML='';document.getElementById('catDetailPanel').dataset.open=''">×</button>
       </div>
       ${txs.length === 0
         ? '<div style="padding:20px 18px;color:var(--gray-600);font-style:italic">Geen transacties gevonden</div>'
         : txs.map(t => {
-            const initials = (t.counterparty||'?').slice(0,2).toUpperCase();
-            const bg = avatarColor(t.counterparty);
+            const en = enrichTransaction(t.counterparty, t.description);
+            const bg = en.iconBg || avatarColor(en.displayName);
             return `<div class="tx-row">
-              <div class="tx-avatar" style="background:${bg}">${initials}</div>
+              <div class="tx-avatar" style="background:${bg};font-size:18px">${en.icon}</div>
               <div class="tx-info">
-                <div class="tx-name">${escHtml(t.counterparty)}</div>
-                <div class="tx-desc">${escHtml(t.description)}</div>
+                <div class="tx-name">${escHtml(en.displayName)}</div>
+                <div class="tx-desc">${escHtml(t.description || t.counterparty || '')}</div>
               </div>
               <div class="tx-right">
                 <div class="tx-amount out">-€${Math.abs(t.amount).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                <div class="tx-date">${t.date||''}</div>
+                <div class="tx-date">${formatDate(t.date)}</div>
               </div>
             </div>`;
           }).join('')}
@@ -1993,6 +2149,14 @@ function renderBudgetWidget(d) {
 
 function fmtEur(n) {
   return '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.length <= 10 ? iso + 'T12:00:00' : iso);
+  if (isNaN(d)) return iso;
+  const NL_MON = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  return `${d.getDate()} ${NL_MON[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function openBudgetEdit() {
